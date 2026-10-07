@@ -8,7 +8,7 @@
 
 ## Установка
 
-Установщик поддерживает только Ubuntu 22.04 LTS и 24.04 LTS, amd64/arm64. Для работы ноды нужны минимум 1 CPU и 1 GiB RAM; потребление зависит от нагрузки Xray. Для сборки выделите не менее 4 GiB RAM и 2 CPU.
+Установщик поддерживает только Ubuntu 22.04 LTS и 24.04 LTS, amd64/arm64. Для работы ноды нужны минимум 1 CPU и 1 GiB RAM; потребление зависит от нагрузки Xray. Установщик скачивает готовый Docker-образ; Node.js и Go на сервере не нужны.
 
 Сначала создайте ноду в панели и скопируйте её ключ подключения. Затем выполните в консоли сервера:
 
@@ -16,10 +16,10 @@
 curl -fsSL --proto '=https' --proto-redir '=https' https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh -o installer.sh && sudo bash installer.sh install-node
 ```
 
-[Скачать installer.sh](https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh). Скрипт спросит версию выпуска установщика и ключ; Enter выбирает `latest`. Установщик 1.1.3 содержит панель 1.1.2, ноду и ядро 1.1.1. По умолчанию порт управления — 2222. Пример с явно указанным портом и выпуском:
+[Скачать installer.sh](https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh). Скрипт спросит версию выпуска установщика и ключ; Enter выбирает `latest`. Установщик 1.1.4 содержит панель 1.1.2, ноду и ядро 1.1.1. По умолчанию порт управления — 2222. Пример с явно указанным портом и выпуском:
 
 ```bash
-sudo bash installer.sh install-node --port 2222 --version 1.1.3
+sudo bash installer.sh install-node --port 2222 --version 1.1.4
 ```
 
 Укажите тот же порт в карточке ноды. Ключ вводится скрыто; отдельный токен для скачивания не нужен. После запуска назначьте профиль и включите inbound, разрешите его во внутреннем скваде, создайте хост и проверьте подключение тестового пользователя.
@@ -65,3 +65,5 @@ docker compose -f docker-compose-prod.yml logs --tail=100 remnanode
 ## Лицензия
 
 Агент сохраняет AGPL-3.0 Remnawave Node; встроенное ядро — MPL-2.0 Xray-core. Авторство и лицензии сохранены в исходниках и [NOTICE.md](NOTICE.md).
+
+Готовые Docker-образы для amd64 и arm64 собираются в GitHub Actions и входят в выпуск установщика. Скачивание из GHCR и GitHub Release открыто; токен не нужен.
