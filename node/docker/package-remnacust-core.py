@@ -22,9 +22,12 @@ for folder, source_folder in [('Xray-core-main', 'xray'), ('.tmp-olcrtc', 'vendo
         if folder == 'Xray-core-main' and relative.as_posix() == 'go.mod':
             content = content.replace(b'../vendor/olcrtc', b'../.tmp-olcrtc')
         files[f'{folder}/{relative.as_posix()}'] = content
+source = json.loads((workspace / 'xray/REMNACUST-UPSTREAM.json').read_text(encoding='utf-8'))
 lock = {
-    'upstreamVersion': 'v26.9.30',
-    'upstreamCommit': 'b26a91de4f3294e26a0ad0a970b81a386a41f789',
+    'version': source['version'],
+    'upstreamVersion': source['upstreamVersion'],
+    'upstreamCommit': source['upstreamCommit'],
+    'upstreamPatchCommit': source.get('upstreamPatchCommit'),
     'files': {name: hashlib.sha256(data).hexdigest() for name, data in sorted(files.items())},
 }
 files['core-source-lock.json'] = (json.dumps(lock, indent=2) + '\n').encode()
