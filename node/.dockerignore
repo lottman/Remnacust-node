@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+.xray-upstream-check
+.github
+.vscode
+*.log
+.env
+.env.*
+coverage
+test

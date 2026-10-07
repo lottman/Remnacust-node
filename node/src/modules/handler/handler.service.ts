@@ -1,0 +1,538 @@
+import ems from 'enhanced-ms';
+import { hasCapNetAdmin } from 'sockdestroy';
+
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { EventBus } from '@nestjs/cqrs';
+
+import { XtlsApi } from '@remnawave/xtls-sdk';
+import { InjectXtls } from '@remnawave/xtls-sdk-nestjs';
+import { ISdkResponse } from '@remnawave/xtls-sdk/build/src/common/types';
+import {
+    RemoveUserResponseModel as RemoveUserResponseModelFromSdk,
+    AddUserResponseModel as AddUserResponseModelFromSdk,
+} from '@remnawave/xtls-sdk/build/src/handler/models';
+
+import { fail, ok, TResult } from '@common/types';
+import { ERRORS } from '@libs/contracts/constants/errors';
+
+import { DropConnectionsEvent } from '../_plugin/events/drop-connections';
+import { InternalService } from '../internal/internal.service';
+import {
+    AddUserRequestDto,
+    AddUsersRequestDto,
+    DropIpsRequestDto,
+    DropUsersConnectionsRequestDto,
+    RemoveUserRequestDto,
+    RemoveUsersRequestDto,
+} from './dtos';
+import { AddUserResponseModel, RemoveUserResponseModel, GenericResponseModel } from './models';
+import { addMasqueUser } from './masque-user';
+
+@Injectable()
+export class HandlerService implements OnModuleInit {
+    private readonly logger = new Logger(HandlerService.name);
+    private capNetAdminAvailable = false;
+
+    constructor(
+        @InjectXtls() private readonly xtlsApi: XtlsApi,
+        private readonly internalService: InternalService,
+        private readonly eventBus: EventBus,
+    ) {}
+
+    public async onModuleInit(): Promise<void> {
+        try {
+            if (!hasCapNetAdmin()) {
+                this.capNetAdminAvailable = false;
+                this.logger.warn('CAP_NET_ADMIN is not available.');
+            } else {
+                this.capNetAdminAvailable = true;
+                this.logger.log('[OK] CAP_NET_ADMIN is available');
+            }
+        } catch (error: unknown) {
+            this.logger.error(error);
+        }
+    }
+
+    public async addUser(data: AddUserRequestDto): Promise<TResult<AddUserResponseModel>> {
+        try {
+            const { data: requestData, hashData } = data;
+            const response: Array<ISdkResponse<AddUserResponseModelFromSdk>> = [];
+            const userId = requestData[0].username;
+            let userIps: string[] | null = null;
+
+            for (const item of requestData) {
+                this.internalService.addXtlsConfigInbound(item.tag);
+            }
+
+            if (userId.includes('~') && !hashData.prevVlessUuid &&
+                requestData.every((item) => this.internalService.hasUserInInbound(item.tag, hashData.vlessUuid)) &&
+                [...this.internalService.getXtlsConfigInbounds()].every((tag) =>
+                    !this.internalService.hasUserInInbound(tag, hashData.vlessUuid) ||
+                    requestData.some((item) => item.tag === tag))) {
+                return ok(new AddUserResponseModel(true, null));
+            }
+
+            if (hashData.prevVlessUuid && !userId.includes('~') &&
+                process.env.XERA_DEVICE_REVOKE !== 'true') {
+                userIps = await this.getUserIps(userId);
+            }
+
+            for (const tag of this.internalService.getXtlsConfigInbounds()) {
+                this.logger.debug(`Removing user: ${userId} from tag: ${tag}`);
+
+                const removed = await this.xtlsApi.handler.removeUser(tag, userId);
+                if (!removed.isOk) throw new Error(removed.message ?? 'Failed to remove previous inbound access');
+
+                if (hashData.prevVlessUuid) {
+                    await this.internalService.removeUserFromInbound(tag, hashData.prevVlessUuid);
+                } else {
+                    await this.internalService.removeUserFromInbound(tag, hashData.vlessUuid);
+                }
+            }
+
+            if (userIps && hashData.prevVlessUuid) {
+                this.eventBus.publish(new DropConnectionsEvent(userIps));
+            }
+
+            for (const item of requestData) {
+                let tempRes = null;
+
+                this.logger.debug(`Adding user: ${item.username} with type: ${item.type}`);
+
+                switch (item.type) {
+                    case 'trojan':
+                        tempRes = await this.xtlsApi.handler.addTrojanUser({
+                            tag: item.tag,
+                            username: item.username,
+                            password: item.password,
+                            level: 0,
+                        });
+                        if (tempRes.isOk) {
+                            await this.internalService.addUserToInbound(
+                                item.tag,
+                                hashData.vlessUuid,
+                            );
+                        }
+                        response.push(tempRes);
+                        break;
+                    case 'vless':
+                        tempRes = await this.xtlsApi.handler.addVlessUser({
+                            tag: item.tag,
+                            username: item.username,
+                            uuid: item.uuid,
+                            flow: item.flow,
+                            level: 0,
+                        });
+                        if (tempRes.isOk) {
+                            await this.internalService.addUserToInbound(
+                                item.tag,
+                                hashData.vlessUuid,
+                            );
+                        }
+                        response.push(tempRes);
+                        break;
+                    case 'shadowsocks':
+                        tempRes = await this.xtlsApi.handler.addShadowsocksUser({
+                            tag: item.tag,
+                            username: item.username,
+                            password: item.password,
+                            cipherType: item.cipherType,
+                            ivCheck: false,
+                            level: 0,
+                        });
+                        if (tempRes.isOk) {
+                            await this.internalService.addUserToInbound(
+                                item.tag,
+                                hashData.vlessUuid,
+                            );
+                        }
+                        response.push(tempRes);
+                        break;
+                    case 'shadowsocks22':
+                        tempRes = await this.xtlsApi.handler.addShadowsocks2022User({
+                            tag: item.tag,
+                            username: item.username,
+                            key: item.password,
+                            level: 0,
+                        });
+
+                        if (tempRes.isOk) {
+                            await this.internalService.addUserToInbound(
+                                item.tag,
+                                hashData.vlessUuid,
+                            );
+                        }
+                        response.push(tempRes);
+                        break;
+                    case 'masque':
+                        tempRes = await addMasqueUser(this.xtlsApi, { tag: item.tag, username: item.username, password: item.password });
+                        if (tempRes.isOk) await this.internalService.addUserToInbound(item.tag, hashData.vlessUuid);
+                        response.push(tempRes);
+                        break;
+                    case 'hysteria':
+                        tempRes = await this.xtlsApi.handler.addHysteriaUser({
+                            tag: item.tag,
+                            username: item.username,
+                            uuid: item.password,
+                            level: 0,
+                        });
+
+                        if (tempRes.isOk) {
+                            await this.internalService.addUserToInbound(
+                                item.tag,
+                                hashData.vlessUuid,
+                            );
+                        }
+                        response.push(tempRes);
+
+                        break;
+                }
+            }
+
+            if (response.some((res) => !res.isOk)) {
+                this.logger.error('Error adding users: ' + JSON.stringify(response, null, 2));
+                return ok(
+                    new AddUserResponseModel(
+                        false,
+                        response.find((res) => !res.isOk)?.message ?? null,
+                    ),
+                );
+            }
+
+            return ok(new AddUserResponseModel(true, null));
+        } catch (error) {
+            this.logger.error(error);
+            let message = '';
+            if (error instanceof Error) {
+                message = error.message;
+            }
+            return fail({ code: ERRORS.INTERNAL_SERVER_ERROR.code, message });
+        }
+    }
+
+    public async removeUser(data: RemoveUserRequestDto): Promise<TResult<RemoveUserResponseModel>> {
+        try {
+            const { username, hashData } = data;
+            const response: Array<ISdkResponse<RemoveUserResponseModelFromSdk>> = [];
+
+            const inboundTags = this.internalService.getXtlsConfigInbounds();
+
+            if (inboundTags.size === 0) {
+                return ok(new RemoveUserResponseModel(true, null));
+            }
+
+            // The patched core revokes sessions by authenticated user ID, including
+            // old shared credentials during cutover, without affecting the same NAT.
+            const userIps = process.env.XERA_DEVICE_REVOKE === 'true' || username.includes('~')
+                ? null
+                : await this.getUserIps(username);
+
+            for (const tag of inboundTags) {
+                this.logger.debug(`Removing user: ${username} from tag: ${tag}`);
+
+                const tempRes = await this.xtlsApi.handler.removeUser(tag, username);
+
+                if (tempRes.isOk) {
+                    await this.internalService.removeUserFromInbound(tag, hashData.vlessUuid);
+                }
+                response.push(tempRes);
+            }
+
+            this.eventBus.publish(new DropConnectionsEvent(userIps));
+
+            if (response.some((res) => !res.isOk)) {
+                this.logger.error(JSON.stringify(response, null, 2));
+                return ok(
+                    new RemoveUserResponseModel(
+                        false,
+                        response.find((res) => !res.isOk)?.message ?? null,
+                    ),
+                );
+            }
+
+            return ok(new RemoveUserResponseModel(true, null));
+        } catch (error: unknown) {
+            this.logger.error(error);
+            let message = '';
+            if (error instanceof Error) {
+                message = error.message;
+            }
+            return fail({ code: ERRORS.INTERNAL_SERVER_ERROR.code, message });
+        }
+    }
+
+    public async addUsers(data: AddUsersRequestDto): Promise<TResult<AddUserResponseModel>> {
+        const tm = performance.now();
+        try {
+            const { affectedInboundTags, users } = data;
+
+            for (const tag of affectedInboundTags) {
+                this.internalService.addXtlsConfigInbound(tag);
+            }
+
+            this.logger.log(
+                `Adding ${users.length} users to inbounds: ${affectedInboundTags.join(', ')}`,
+            );
+
+            for (const user of users) {
+                if (user.userData.userId.includes('~')) {
+                    const currentTags = [...this.internalService.getXtlsConfigInbounds()]
+                        .filter((tag) => this.internalService.hasUserInInbound(tag, user.userData.vlessUuid));
+                    const requestedTags = new Set(user.inboundData.map((item) => item.tag));
+                    if (currentTags.length === requestedTags.size &&
+                        currentTags.every((tag) => requestedTags.has(tag))) {
+                        continue;
+                    }
+                }
+                for (const tag of this.internalService.getXtlsConfigInbounds()) {
+                    const removed = await this.xtlsApi.handler.removeUser(tag, user.userData.userId);
+                    if (!removed.isOk) throw new Error(removed.message ?? 'Failed to remove previous inbound access');
+
+                    await this.internalService.removeUserFromInbound(tag, user.userData.hashUuid);
+                }
+
+                for (const item of user.inboundData) {
+                    let tempRes = null;
+
+                    switch (item.type) {
+                        case 'trojan':
+                            tempRes = await this.xtlsApi.handler.addTrojanUser({
+                                tag: item.tag,
+                                username: user.userData.userId,
+                                password: user.userData.trojanPassword,
+                                level: 0,
+                            });
+                            if (tempRes.isOk) {
+                                await this.internalService.addUserToInbound(
+                                    item.tag,
+                                    user.userData.vlessUuid,
+                                );
+                            }
+
+                            break;
+                        case 'vless':
+                            tempRes = await this.xtlsApi.handler.addVlessUser({
+                                tag: item.tag,
+                                username: user.userData.userId,
+                                uuid: user.userData.vlessUuid,
+                                flow: item.flow,
+                                level: 0,
+                            });
+                            if (tempRes.isOk) {
+                                await this.internalService.addUserToInbound(
+                                    item.tag,
+                                    user.userData.vlessUuid,
+                                );
+                            }
+                            break;
+                        case 'shadowsocks':
+                            tempRes = await this.xtlsApi.handler.addShadowsocksUser({
+                                tag: item.tag,
+                                username: user.userData.userId,
+                                password: user.userData.ssPassword,
+                                cipherType: 0,
+                                ivCheck: false,
+                                level: 0,
+                            });
+                            if (tempRes.isOk) {
+                                await this.internalService.addUserToInbound(
+                                    item.tag,
+                                    user.userData.vlessUuid,
+                                );
+                            }
+                            break;
+                        case 'shadowsocks22':
+                            tempRes = await this.xtlsApi.handler.addShadowsocks2022User({
+                                tag: item.tag,
+                                username: user.userData.userId,
+                                key: item.password ?? Buffer.from(user.userData.ssPassword).toString('base64'),
+                                level: 0,
+                            });
+                            if (tempRes.isOk) {
+                                await this.internalService.addUserToInbound(
+                                    item.tag,
+                                    user.userData.vlessUuid,
+                                );
+                            }
+                            break;
+                        case 'masque':
+                            tempRes = await addMasqueUser(this.xtlsApi, { tag: item.tag, username: user.userData.userId, password: user.userData.vlessUuid });
+                            if (tempRes.isOk) await this.internalService.addUserToInbound(item.tag, user.userData.vlessUuid);
+                            break;
+                        case 'hysteria':
+                            tempRes = await this.xtlsApi.handler.addHysteriaUser({
+                                tag: item.tag,
+                                username: user.userData.userId,
+                                uuid: user.userData.vlessUuid,
+                                level: 0,
+                            });
+                            if (tempRes.isOk) {
+                                await this.internalService.addUserToInbound(
+                                    item.tag,
+                                    user.userData.vlessUuid,
+                                );
+                            }
+                            break;
+                        default:
+                            throw new Error('Unsupported inbound type');
+                    }
+                    if (!tempRes?.isOk) {
+                        throw new Error(tempRes?.message ?? 'Failed to add user to inbound');
+                    }
+                }
+            }
+
+            return ok(new AddUserResponseModel(true, null));
+        } catch (error) {
+            this.logger.error(error);
+            let message = '';
+            if (error instanceof Error) {
+                message = error.message;
+            }
+            return fail({ code: ERRORS.INTERNAL_SERVER_ERROR.code, message });
+        } finally {
+            this.logger.log(
+                'Users addition took: ' +
+                    ems(performance.now() - tm, {
+                        extends: 'short',
+                        includeMs: true,
+                    }),
+            );
+        }
+    }
+
+    public async removeUsers(
+        data: RemoveUsersRequestDto,
+    ): Promise<TResult<RemoveUserResponseModel>> {
+        const tm = performance.now();
+        try {
+            const inboundTags = this.internalService.getXtlsConfigInbounds();
+
+            if (inboundTags.size === 0) {
+                return ok(new RemoveUserResponseModel(true, null));
+            }
+
+            this.logger.log(
+                `Removing ${data.users.length} users from inbounds: ${Array.from(inboundTags).join(', ')}`,
+            );
+
+            const removeUsersResponse: Array<ISdkResponse<RemoveUserResponseModelFromSdk>> = [];
+
+            for (const user of data.users) {
+                const { userId, hashUuid } = user;
+
+                const userIps = process.env.XERA_DEVICE_REVOKE === 'true' || userId.includes('~')
+                    ? null
+                    : await this.getUserIps(userId);
+
+                for (const tag of inboundTags) {
+                    this.logger.debug(`Removing user: ${userId} from tag: ${tag}`);
+
+                    const tempRes = await this.xtlsApi.handler.removeUser(tag, userId);
+
+                    if (tempRes.isOk) {
+                        await this.internalService.removeUserFromInbound(tag, hashUuid);
+                    }
+                    removeUsersResponse.push(tempRes);
+                }
+
+                this.eventBus.publish(new DropConnectionsEvent(userIps));
+            }
+
+            if (removeUsersResponse.some((res) => !res.isOk)) {
+                this.logger.error(JSON.stringify(removeUsersResponse, null, 2));
+                return ok(
+                    new RemoveUserResponseModel(
+                        false,
+                        removeUsersResponse.find((res) => !res.isOk)?.message ?? null,
+                    ),
+                );
+            }
+
+            return ok(new RemoveUserResponseModel(true, null));
+        } catch (error: unknown) {
+            this.logger.error(error);
+            let message = '';
+            if (error instanceof Error) {
+                message = error.message;
+            }
+            return fail({ code: ERRORS.INTERNAL_SERVER_ERROR.code, message });
+        } finally {
+            this.logger.log(
+                'Users removal took: ' +
+                    ems(performance.now() - tm, {
+                        extends: 'short',
+                        includeMs: true,
+                    }),
+            );
+        }
+    }
+
+    public async dropUsersConnections(
+        data: DropUsersConnectionsRequestDto,
+    ): Promise<TResult<GenericResponseModel>> {
+        try {
+            const { userIds } = data;
+
+            for (const userId of userIds) {
+                const userIps = await this.getUserIps(userId);
+                this.eventBus.publish(new DropConnectionsEvent(userIps));
+            }
+
+            return ok(new GenericResponseModel(true));
+        } catch (error) {
+            this.logger.error(error);
+            return ok(new GenericResponseModel(false));
+        }
+    }
+
+    public async dropIps(data: DropIpsRequestDto): Promise<TResult<GenericResponseModel>> {
+        try {
+            const { ips } = data;
+
+            this.eventBus.publish(new DropConnectionsEvent(ips));
+
+            return ok(new GenericResponseModel(true));
+        } catch (error) {
+            this.logger.error(error);
+            return ok(new GenericResponseModel(false));
+        }
+    }
+
+    private async getUserIps(userId: string): Promise<string[] | null> {
+        try {
+            if (!this.capNetAdminAvailable) {
+                return null;
+            }
+
+            const userIps = await this.xtlsApi.stats.rawClient.getStatsOnlineIpList({
+                name: `user>>>${userId}>>>online`,
+                reset: true,
+            });
+
+            const ips = Object.keys(userIps.ips);
+
+            return ips;
+        } catch (error) {
+            if (error && typeof error === 'object' && 'code' in error && error.code === 5) {
+                return null;
+            }
+
+            this.logger.error(`Failed to get user IPs for user ${userId}: ${error}`);
+            return null;
+        }
+    }
+
+    public async removeOutbound(tag: string): Promise<void> {
+        try {
+            await this.xtlsApi.handler.rawClient.removeOutbound({
+                tag,
+            });
+
+            return;
+        } catch (error) {
+            this.logger.error(error);
+            return;
+        }
+    }
+}
