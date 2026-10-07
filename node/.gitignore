@@ -46,6 +46,7 @@ lerna-debug.log*
 
 /build
 *.tar.gz
+!/docker/remnacust-core.tar.gz
 
 # Public contract used by the agent and local package dependency.
 !/libs/contract/build/
