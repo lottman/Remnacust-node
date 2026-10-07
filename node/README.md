@@ -1,6 +1,6 @@
 # Remnacust Node 1.1.1
 
-Установка через консоль на Ubuntu 22.04 LTS или 24.04 LTS (amd64/arm64):
+Установка через консоль на Ubuntu 22.04 LTS, 24.04 LTS или 26.04 LTS (amd64/arm64):
 
 ```bash
 curl -fsSL --proto '=https' --proto-redir '=https' https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh -o installer.sh && sudo bash installer.sh install-node
