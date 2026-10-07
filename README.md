@@ -16,10 +16,10 @@
 curl -fsSL --proto '=https' --proto-redir '=https' https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh -o installer.sh && sudo bash installer.sh install-node
 ```
 
-[Скачать installer.sh](https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh). Скрипт спросит версию выпуска установщика и ключ; Enter выбирает `latest`. Установщик 1.1.5 содержит панель 1.1.2, ноду и ядро 1.1.1. По умолчанию порт управления — 2222. Пример с явно указанным портом и выпуском:
+[Скачать installer.sh](https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh). Скрипт спросит версию выпуска установщика и ключ; Enter выбирает `latest`. Установщик 1.1.6 содержит панель 1.1.2, ноду и ядро 1.1.1. По умолчанию порт управления — 2222. Пример с явно указанным портом и выпуском:
 
 ```bash
-sudo bash installer.sh install-node --port 2222 --version 1.1.5
+sudo bash installer.sh install-node --port 2222 --version 1.1.6
 ```
 
 Укажите тот же порт в карточке ноды. Ключ вводится скрыто; отдельный токен для скачивания не нужен. После запуска назначьте профиль и включите inbound, разрешите его во внутреннем скваде, создайте хост и проверьте подключение тестового пользователя.
