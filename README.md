@@ -8,19 +8,18 @@
 
 ## Установка
 
-Сначала создайте ноду в панели и скопируйте её ключ подключения.
+Установщик поддерживает только Ubuntu 22.04 LTS и 24.04 LTS, amd64/arm64. Для работы ноды нужны минимум 1 CPU и 1 GiB RAM; потребление зависит от нагрузки Xray. Для сборки выделите не менее 4 GiB RAM и 2 CPU.
+
+Сначала создайте ноду в панели и скопируйте её ключ подключения. Затем выполните в консоли сервера:
 
 ```bash
-curl --fail --show-error --location --proto '=https' --proto-redir '=https' \
-  https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh \
-  -o installer.sh
-sudo bash installer.sh install-node
+curl -fsSL --proto '=https' --proto-redir '=https' https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh -o installer.sh && sudo bash installer.sh install-node
 ```
 
-Скрипт спросит версию и ключ; Enter выбирает `latest`. По умолчанию порт управления — 2222. Для другого порта:
+[Скачать installer.sh](https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh). Скрипт спросит версию выпуска установщика и ключ; Enter выбирает `latest`. Установщик 1.1.2 содержит компоненты 1.1.1. По умолчанию порт управления — 2222. Пример с явно указанным портом и выпуском:
 
 ```bash
-sudo bash installer.sh install-node --port 2222 --version 1.1.1
+sudo bash installer.sh install-node --port 2222 --version 1.1.2
 ```
 
 Укажите тот же порт в карточке ноды. Ключ вводится скрыто; отдельный токен для скачивания не нужен. После запуска назначьте профиль и включите inbound, разрешите его во внутреннем скваде, создайте хост и проверьте подключение тестового пользователя.
