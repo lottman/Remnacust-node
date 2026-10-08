@@ -16,10 +16,10 @@
 curl -fsSL --proto '=https' --proto-redir '=https' https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh -o installer.sh && sudo bash installer.sh install-node
 ```
 
-[Скачать installer.sh](https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh). Скрипт спросит версию выпуска, API-порт, адрес панели для ограничения доступа и ключ; предложит TLS/XHTTP с выбором сертификата и email ACME; Enter выбирает `latest`. Установщик 1.2.19 содержит панель 1.1.7.1, ноду 1.1.3 и ядро 1.1.2. По умолчанию порт управления — 2222. Пример с явно указанным портом и выпуском:
+[Скачать installer.sh](https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh). Скрипт спросит версию выпуска, API-порт, адрес панели для ограничения доступа и ключ; предложит TLS/XHTTP с выбором сертификата и email ACME; Enter выбирает `latest`. Установщик 1.2.20 содержит панель 1.1.7.2, ноду 1.1.3 и ядро 1.1.2. По умолчанию порт управления — 2222. Пример с явно указанным портом и выпуском:
 
 ```bash
-sudo bash installer.sh install-node --port 2222 --version 1.2.19
+sudo bash installer.sh install-node --port 2222 --version 1.2.20
 ```
 
 Укажите тот же порт в карточке ноды. Ключ вводится скрыто; отдельный токен для скачивания не нужен. После запуска назначьте профиль и включите inbound, разрешите его во внутреннем скваде, создайте хост и проверьте подключение тестового пользователя.
@@ -61,6 +61,10 @@ docker compose -f docker-compose-prod.yml logs --tail=100 remnanode
 Если панель не видит агент, проверьте адрес, управляющий порт, ключ и firewall. Если агент доступен, проверьте профиль, клиентский порт, хост и сквад пользователя. После обновления проверьте версии агента и ядра, журнал запуска и изменение счётчика трафика.
 
 Стандартный Xray не выполняет расширения Remnacust для хостов и устройств. Для этих функций используйте агент и ядро одного выпуска. [Совместимость](docs/NODE-COMPATIBILITY.md) · [Поддержка](https://t.me/lottman).
+
+## Xera HTTP
+
+Xera HTTP — форк транспорта XHTTP (SplitHTTP) из Xray-core, с собственными настройками `network: "xera-http"` и `xeraHttpSettings`. Для соединения его должны поддерживать ядра обеих сторон. Настройка, отличия, режимы и переход с XHTTP описаны в [руководстве панели](https://github.com/lottman/Remnacust-panel/blob/main/panel/frontend/public/documentation/guide-ru.md#транспорт-xera-http).
 
 ## Лицензия
 
