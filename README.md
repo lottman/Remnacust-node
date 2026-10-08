@@ -2,9 +2,9 @@
 
 Агент ноды получает конфигурацию и пользователей от панели, запускает Xray и возвращает статистику. Образ включает наше ядро с квотами хостов, ограничениями скорости и отзывом доступа устройств.
 
-**Версия 1.1.3** · **Основа: Remnawave Node 3.4.2** · [Панель](https://github.com/lottman/Remnacust-panel) · [Ядро](https://github.com/lottman/Remnacust-core)
+**Версия 1.1.4** · **Основа: Remnawave Node 3.4.2** · [Панель](https://github.com/lottman/Remnacust-panel) · [Ядро](https://github.com/lottman/Remnacust-core)
 
-Агент сообщает панели версию `1.1.3-remnacust`; версия Xray передаётся отдельно. Для обычной работы нужны Linux, Docker Engine и Compose v2. Управляющий порт должен быть доступен панели, порты inbound — клиентам.
+Агент сообщает панели версию `1.1.4-remnacust`; версия Xray передаётся отдельно. Для обычной работы нужны Linux, Docker Engine и Compose v2. Управляющий порт должен быть доступен панели, порты inbound — клиентам.
 
 ## Установка
 
@@ -16,10 +16,10 @@
 curl -fsSL --proto '=https' --proto-redir '=https' https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh -o installer.sh && sudo bash installer.sh install-node
 ```
 
-[Скачать installer.sh](https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh). Скрипт спросит версию выпуска, API-порт, адрес панели для ограничения доступа и ключ; предложит TLS/XHTTP с выбором сертификата и email ACME; Enter выбирает `latest`. Установщик 1.2.22 содержит панель 1.1.7.4, ноду 1.1.3 и ядро 1.1.2. По умолчанию порт управления — 2222. Пример с явно указанным портом и выпуском:
+[Скачать installer.sh](https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh). Скрипт спросит версию выпуска, API-порт, адрес панели для ограничения доступа и ключ; предложит TLS/XHTTP с выбором сертификата и email ACME; Enter выбирает `latest`. Установщик 1.2.23 содержит панель 1.1.7.4, ноду 1.1.4 и ядро 1.1.3. По умолчанию порт управления — 2222. Пример с явно указанным портом и выпуском:
 
 ```bash
-sudo bash installer.sh install-node --port 2222 --version 1.2.22
+sudo bash installer.sh install-node --port 2222 --version 1.2.23
 ```
 
 Укажите тот же порт в карточке ноды. Ключ вводится скрыто; отдельный токен для скачивания не нужен. После запуска назначьте профиль и включите inbound, разрешите его во внутреннем скваде, создайте хост и проверьте подключение тестового пользователя.
@@ -38,7 +38,7 @@ sudo bash installer.sh migrate-remnawave-node --container remnanode
 ```bash
 git clone https://github.com/lottman/Remnacust-node.git
 cd Remnacust-node
-docker build -f node/docker/Dockerfile -t remnacust-node:1.1.3 node
+docker build -f node/docker/Dockerfile -t remnacust-node:1.1.4 node
 cp node/.env.sample node/.env
 chmod 600 node/.env
 ```
@@ -71,3 +71,5 @@ Xera HTTP — форк транспорта XHTTP (SplitHTTP) из Xray-core, с
 Агент сохраняет AGPL-3.0 Remnawave Node; встроенное ядро — MPL-2.0 Xray-core. Авторство и лицензии сохранены в исходниках и [NOTICE.md](NOTICE.md).
 
 Готовые Docker-образы для amd64 и arm64 собираются в GitHub Actions и входят в выпуск установщика. Скачивание из GHCR и GitHub Release открыто; токен не нужен.
+
+В ноде 1.1.4 используется ядро 1.1.3: отзыв устройства обрывает его активное соединение, не отключая другие устройства с того же IP. Для применения исправления обновите ноду через `upgrade-node`. Порт, ключ подключения, тома и существующий проект Compose сохраняются.
