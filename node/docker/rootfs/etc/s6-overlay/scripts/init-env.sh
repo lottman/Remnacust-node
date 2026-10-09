@@ -1,6 +1,7 @@
 #!/command/with-contenv sh
 
 echo "[init-env] preparing runtime environment..."
+umask 077
 
 gen() {
     tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c "${1:-64}"
@@ -9,7 +10,9 @@ gen() {
 RNDSTR=$(gen 10)
 INTERNAL_REST_TOKEN=$(gen 64)
 INTERNAL_SOCKET_PATH="rwint-${RNDSTR}"
-XTLS_API_SOCKET_PATH="xtls-api-${RNDSTR}"
+XTLS_API_DIR="/run/remnacust-xray-${RNDSTR}"
+mkdir -m 700 "$XTLS_API_DIR" || exit 1
+XTLS_API_SOCKET_PATH="${XTLS_API_DIR}/api.sock"
 
 ENV_DIR=/run/s6/container_environment
 mkdir -p "$ENV_DIR"

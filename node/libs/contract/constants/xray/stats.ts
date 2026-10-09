@@ -30,7 +30,7 @@ export const XRAY_DEFAULT_API_MODEL = {
 export const XRAY_API_INBOUND_MODEL = ({ xtlsApiSocketPath }: { xtlsApiSocketPath: string }) =>
     ({
         tag: 'REMNAWAVE_API_INBOUND',
-        listen: `@${xtlsApiSocketPath}`,
+        listen: `${xtlsApiSocketPath},0600`,
         protocol: 'tunnel',
     }) as const;
 

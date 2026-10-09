@@ -2,7 +2,6 @@ process.title = 'rw-node';
 import 'zod/compile';
 import * as bodyParser from '@kastov/body-parser-with-zstd';
 import compression from 'compression';
-import express, { json } from 'express';
 import helmet from 'helmet';
 import { Server } from 'https';
 import morgan from 'morgan';
@@ -17,12 +16,14 @@ import { NestFactory } from '@nestjs/core';
 
 import { TypedConfigService } from '@common/config/app-config/typed-config.service';
 import { NotFoundExceptionFilter } from '@common/exception';
+import { TokenAuthMiddleware } from '@common/middlewares';
 import { acquireInstanceLock } from '@common/utils/acquire-instance-lock';
 import { parseNodePayload } from '@common/utils/decode-node-payload';
 import { makeSniVerifier } from '@common/utils/decode-node-payload/decode-servername.util';
 import { customLogFilter } from '@common/utils/filter-logs';
 import { getDuplicateInstanceMessage } from '@common/utils/get-duplicate-instance-message';
 import { getStartMessage } from '@common/utils/get-start-message';
+import { createInternalHttpApp } from '@common/utils/internal-http-app';
 import { isDevelopment } from '@common/utils/is-development';
 import { ROOT } from '@libs/contracts/api';
 import {
@@ -134,17 +135,11 @@ async function bootstrap(): Promise<void> {
     const httpAdapter = app.getHttpAdapter();
     const httpServer = httpAdapter.getInstance();
 
-    const internalApp = express();
-    internalApp.use(json({ limit: '1000mb' }));
-
-    // '/' + REST_API.VISION.BLOCK_IP, '/' + REST_API.VISION.UNBLOCK_IP
-    internalApp.use(
+    const internalAuth = new TokenAuthMiddleware(config);
+    const internalApp = createInternalHttpApp(
+        internalAuth.use.bind(internalAuth),
+        httpServer.handle.bind(httpServer),
         [XRAY_INTERNAL_FULL_PATH, XRAY_INTERNAL_FULL_WEBHOOK_PATH],
-        (req, res, next) => {
-            req.url = req.originalUrl;
-
-            httpServer.handle(req, res, next);
-        },
     );
 
     const internalServer = internalApp.listen('\0' + internalSocketPath);

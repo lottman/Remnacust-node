@@ -100,7 +100,7 @@ COPY --from=certificates /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-ce
 ARG S6_OVERLAY_VERSION=3.2.3.2
 
 LABEL org.opencontainers.image.title="Remnacust Node"
-LABEL org.opencontainers.image.version="1.1.5"
+LABEL org.opencontainers.image.version="1.1.6"
 LABEL org.opencontainers.image.description="Remnacust Node with built-in XRay Core"
 LABEL org.opencontainers.image.url="https://github.com/lottman/Remnacust-node"
 LABEL org.opencontainers.image.source="https://github.com/lottman/Remnacust-node"
