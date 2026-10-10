@@ -18,7 +18,7 @@ RUN npm run build \
     && chmod +x dist/cli.js
 
 
-FROM golang:1.27-alpine AS xray-device-build
+FROM golang:1.27.2-alpine AS xray-device-build
 
 ARG XRAY_CORE_VERSION=v26.9.30
 ARG XRAY_CORE_COMMIT=b26a91de4f3294e26a0ad0a970b81a386a41f789
@@ -74,7 +74,7 @@ RUN mkdir -p /usr/local/share/asn \
     && rm -f /tmp/asn-prefixes.lmdb.zst
 
 
-FROM golang:1.27-alpine AS geocheck
+FROM golang:1.27.2-alpine AS geocheck
 ARG GEOCHECK_VERSION=0.3.0
 ARG GEOCHECK_COMMIT=50e084bb3ed34b55fc6839fe0dc4bafd9fe275fc
 RUN apk add --no-cache git
@@ -100,7 +100,7 @@ COPY --from=certificates /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-ce
 ARG S6_OVERLAY_VERSION=3.2.3.2
 
 LABEL org.opencontainers.image.title="Remnacust Node"
-LABEL org.opencontainers.image.version="1.1.6"
+LABEL org.opencontainers.image.version="1.1.7"
 LABEL org.opencontainers.image.description="Remnacust Node with built-in XRay Core"
 LABEL org.opencontainers.image.url="https://github.com/lottman/Remnacust-node"
 LABEL org.opencontainers.image.source="https://github.com/lottman/Remnacust-node"
