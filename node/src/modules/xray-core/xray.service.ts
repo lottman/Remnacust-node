@@ -48,6 +48,7 @@ import {
     StartXrayResponseModel,
     StopXrayResponseModel,
 } from './models';
+import { NodeReconciliationService } from './node-reconciliation.service';
 import { XrayProcessService } from './xray-process.service';
 
 const XRAY_LOG_FILE = '/var/log/xray/current' as const;
@@ -87,6 +88,7 @@ export class XrayService implements OnApplicationBootstrap {
         private readonly configService: TypedConfigService,
         private readonly queryBus: QueryBus,
         private readonly commandBus: CommandBus,
+        private readonly reconciliation: NodeReconciliationService,
     ) {
         this.internal = {
             socketPath: this.configService.getOrThrow('INTERNAL_SOCKET_PATH'),
@@ -183,6 +185,7 @@ export class XrayService implements OnApplicationBootstrap {
                 }
 
                 if (!shouldRestart) {
+                    await this.reconciliation?.enroll(body.internals.reconciliation);
                     return ok(
                         new StartXrayResponseModel(
                             true,
@@ -275,6 +278,7 @@ export class XrayService implements OnApplicationBootstrap {
             this.logger.log(`✔ XRay Core v${this.xrayVersion} is up and running.`);
 
             await this.commandBus.execute(new RunPostStartCommand(body.internals.metadata));
+            await this.reconciliation?.enroll(body.internals.reconciliation);
 
             return ok(
                 new StartXrayResponseModel(

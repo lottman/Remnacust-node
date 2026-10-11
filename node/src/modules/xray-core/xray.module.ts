@@ -8,6 +8,7 @@ import { GeodataService } from './geodata.service';
 import { HostPolicyController } from './host-policy.controller';
 import { ManagedCoreController } from './managed-core.controller';
 import { ManagedCoreStore } from './managed-core.store';
+import { NodeReconciliationService } from './node-reconciliation.service';
 import { XrayProcessService } from './xray-process.service';
 import { XrayController } from './xray.controller';
 import { XrayService } from './xray.service';
@@ -16,6 +17,7 @@ import { XrayService } from './xray.service';
     imports: [InternalModule, CqrsModule],
     providers: [
         XrayService,
+        NodeReconciliationService,
         XrayProcessService,
         GeodataService,
         CoreLoaderService,
