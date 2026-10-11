@@ -25,7 +25,7 @@ function fixture(stored=enrollment){
 test('a paired node requests fresh data at boot; healthy heartbeats do not request restarts',async()=>{
     const {state,service}=fixture();await service.onApplicationBootstrap();
     assert.equal(state.schedules[0],0);
-    await service.checkIn();await service.checkIn();
+    await service.checkIn();await service.enroll(enrollment);await service.checkIn();
     assert.deepEqual(state.requests.map(r=>JSON.parse(r.options.body)),[{refresh:true,revision:'12'},{refresh:false,revision:'12'}]);
     assert.equal(state.requests[0].options.headers.Authorization,'Bearer '+enrollment.token);
     assert.equal(state.requests[0].options.redirect,'error');
@@ -62,4 +62,29 @@ test('a rate-limited refresh remains pending; concurrent checks and shutdown do 
     let calls=0;state.fetch=(url,options)=>new Promise((resolve,reject)=>{calls++;options.signal.addEventListener('abort',()=>reject(Error('aborted')),{once:true});});
     const running=service.checkIn();await service.checkIn();assert.equal(calls,1);
     const scheduled=state.schedules.length;service.onModuleDestroy();await running;assert.equal(state.schedules.length,scheduled);
+});
+
+test('queue acceptance is not an acknowledgement that configuration was applied',async()=>{
+    const {state,service}=fixture();await service.onApplicationBootstrap();
+    await service.checkIn();await service.checkIn();
+    assert.deepEqual(state.requests.map(r=>JSON.parse(r.options.body).refresh),[true,true]);
+    service.onModuleDestroy();
+});
+
+test('a successful unchanged configuration clears a boot or recovery refresh',async()=>{
+    const {state,service}=fixture();await service.onApplicationBootstrap();
+    await service.enroll(enrollment);await service.checkIn();
+    assert.equal(JSON.parse(state.requests[0].options.body).refresh,false);
+    service.onModuleDestroy();
+});
+
+test('a failed check-in sent before a successful start cannot invalidate that start',async()=>{
+    const {state,service}=fixture();await service.onApplicationBootstrap();
+    let reject;state.fetch=()=>new Promise((_resolve,fail)=>{reject=fail;});
+    const pending=service.checkIn();await service.enroll({...enrollment,revision:'13'});
+    reject(Error('late network failure'));await pending;
+    assert.equal(service.refresh,false);
+    assert.equal(service.enrollment.revision,'13');
+    assert.equal(state.warnings.length,0);
+    service.onModuleDestroy();
 });

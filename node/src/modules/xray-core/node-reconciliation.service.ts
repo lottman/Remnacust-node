@@ -18,6 +18,7 @@ export class NodeReconciliationService implements OnApplicationBootstrap, OnModu
     private refresh = true;
     private controller: AbortController | null = null;
     private failureReported = false;
+    private appliedGeneration = 0;
 
     async onApplicationBootstrap(): Promise<void> {
         try {
@@ -34,22 +35,26 @@ export class NodeReconciliationService implements OnApplicationBootstrap, OnModu
     }
 
     async enroll(value?: Enrollment): Promise<void> {
-        if (
-            !value ||
-            (value.url === this.enrollment?.url &&
-                value.token === this.enrollment?.token &&
-                value.revision === this.enrollment?.revision)
-        )
-            return;
+        if (!value) return;
         const parsed =
             StartXrayCommand.RequestSchema.shape.internals.shape.reconciliation.parse(value)!;
-        await mkdir(dirname(STATE_FILE), { recursive: true, mode: 0o700 });
-        await writeFile(`${STATE_FILE}.tmp`, JSON.stringify(parsed), { mode: 0o600 });
-        await rename(`${STATE_FILE}.tmp`, STATE_FILE);
-        this.enrollment = parsed;
+        if (
+            !(
+                value.url === this.enrollment?.url &&
+                value.token === this.enrollment?.token &&
+                value.revision === this.enrollment?.revision
+            )
+        ) {
+            await mkdir(dirname(STATE_FILE), { recursive: true, mode: 0o700 });
+            await writeFile(`${STATE_FILE}.tmp`, JSON.stringify(parsed), { mode: 0o600 });
+            await rename(`${STATE_FILE}.tmp`, STATE_FILE);
+            this.enrollment = parsed;
+        }
         // This start already supplies fresh configuration; request again only on
         // a future boot or connection recovery, not recursively during enrollment.
         this.refresh = false;
+        this.failureReported = false;
+        this.appliedGeneration++;
         this.schedule(30000);
     }
 
@@ -70,6 +75,7 @@ export class NodeReconciliationService implements OnApplicationBootstrap, OnModu
         }
         this.running = true;
         const enrolled = this.enrollment;
+        const generation = this.appliedGeneration;
         this.controller = new AbortController();
         try {
             const response = await fetch(enrolled.url, {
@@ -103,18 +109,20 @@ export class NodeReconciliationService implements OnApplicationBootstrap, OnModu
             }
             const result = JSON.parse(Buffer.concat(chunks).toString('utf8')) as {
                 accepted?: boolean;
-                refreshQueued?: boolean;
             };
             if (result.accepted !== true) throw new Error('Check-in not accepted');
-            if (!this.refresh || result.refreshQueued === true) this.refresh = false;
+            // Queue acceptance cannot acknowledge an applied configuration.
+            // Only a successful authenticated start calls enroll() to do that.
             this.failureReported = false;
         } catch {
-            this.refresh = true;
-            if (!this.failureReported)
-                this.logger.warn(
-                    'Panel unavailable; node will request current configuration after reconnecting',
-                );
-            this.failureReported = true;
+            if (generation === this.appliedGeneration) {
+                this.refresh = true;
+                if (!this.failureReported)
+                    this.logger.warn(
+                        'Panel unavailable; node will request current configuration after reconnecting',
+                    );
+                this.failureReported = true;
+            }
         } finally {
             this.running = false;
             this.controller = null;
