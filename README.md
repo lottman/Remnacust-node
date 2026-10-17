@@ -18,7 +18,7 @@
 curl -fsSL --proto '=https' --proto-redir '=https' https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh -o installer.sh && sudo bash installer.sh install-node
 ```
 
-[Скачать installer.sh](https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh). Скрипт спросит версию выпуска, API-порт, адрес панели для ограничения доступа и ключ; предложит TLS/XHTTP с выбором сертификата и email ACME; Enter выбирает `latest`. Готовящийся установщик 1.2.59 содержит панель 1.1.7.32, ноду 1.1.10 и ядро 1.1.6. По умолчанию порт управления — 2222. Пример с явно указанным портом и выпуском:
+[Скачать installer.sh](https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh). Скрипт спросит версию выпуска, API-порт, адрес панели для ограничения доступа и ключ; предложит TLS/XHTTP с выбором сертификата и email ACME; Enter выбирает `latest`. Установщик 1.2.59 содержит панель 1.1.7.32, ноду 1.1.10 и ядро 1.1.6. По умолчанию порт управления — 2222. Пример с явно указанным портом и выпуском:
 
 ```bash
 sudo bash installer.sh install-node --port 2222 --version 1.2.25
