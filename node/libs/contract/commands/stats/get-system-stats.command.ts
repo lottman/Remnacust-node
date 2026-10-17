@@ -1,12 +1,14 @@
 import { z } from 'zod';
 
-import { NodeSystemStatsSchema } from '../../models';
+import { NodeSystemStatsSchema, ProfileTrafficSchema } from '../../models';
 import { REST_API } from '../../api';
 export namespace GetSystemStatsCommand {
     export const url = REST_API.STATS.GET_SYSTEM_STATS;
 
     export const ResponseSchema = z.object({
         response: z.object({
+            userStateSynchronized: z.boolean().optional(),
+            bindingTraffic: ProfileTrafficSchema.nullable().optional(),
             xrayInfo: z
                 .object({
                     numGoroutine: z.number(),

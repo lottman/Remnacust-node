@@ -1,4 +1,4 @@
-import { TNodeSystemStats } from '@libs/contracts/models';
+import { TNodeSystemStats, ProfileTrafficSnapshot } from '@libs/contracts/models';
 
 interface IXrayStats {
     numGoroutine: number;
@@ -26,7 +26,9 @@ export class GetSystemStatsResponseModel {
         stats: TNodeSystemStats;
     };
 
-    constructor(xrayInfo: IXrayStats | null, plugins: IPluginStats, systemStats: TNodeSystemStats) {
+    constructor(xrayInfo: IXrayStats | null, plugins: IPluginStats, systemStats: TNodeSystemStats,
+        public readonly userStateSynchronized = false,
+        public readonly bindingTraffic: ProfileTrafficSnapshot | null = null) {
         this.xrayInfo = xrayInfo;
         this.plugins = plugins;
         this.system = {

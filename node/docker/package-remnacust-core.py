@@ -1,5 +1,5 @@
 """Create the deterministic, verified source input used by the node image."""
-import gzip, hashlib, io, json, pathlib, tarfile
+import gzip, hashlib, io, json, pathlib, re, tarfile
 
 node = pathlib.Path(__file__).resolve().parents[1]
 workspace = node.parent
@@ -23,6 +23,14 @@ for folder, source_folder in [('Xray-core-main', 'xray'), ('.tmp-olcrtc', 'vendo
             content = content.replace(b'../vendor/olcrtc', b'../.tmp-olcrtc')
         files[f'{folder}/{relative.as_posix()}'] = content
 source = json.loads((workspace / 'xray/REMNACUST-UPSTREAM.json').read_text(encoding='utf-8'))
+if not re.fullmatch(r'v[0-9][A-Za-z0-9.+-]*', source['upstreamVersion']) or not re.fullmatch(r'[a-f0-9]{40}', source['upstreamCommit']):
+    raise SystemExit('Invalid pinned upstream release metadata')
+dockerfile = docker / 'Dockerfile'
+recipe = dockerfile.read_text(encoding='utf-8')
+recipe, versions = re.subn(r'(?m)^ARG XRAY_CORE_VERSION=\S+$', 'ARG XRAY_CORE_VERSION=' + source['upstreamVersion'], recipe)
+recipe, commits = re.subn(r'(?m)^ARG XRAY_CORE_COMMIT=\S+$', 'ARG XRAY_CORE_COMMIT=' + source['upstreamCommit'], recipe)
+if versions != 2 or commits != 1:
+    raise SystemExit('Dockerfile upstream pin layout changed; update the source packager')
 lock = {
     'version': source['version'],
     'upstreamVersion': source['upstreamVersion'],
@@ -39,4 +47,5 @@ with archive.open('wb') as stream, gzip.GzipFile(fileobj=stream, mode='wb', mtim
         member.size, member.mode, member.mtime = len(data), 0o644, 0
         tar.addfile(member, io.BytesIO(data))
 (docker / 'remnacust-core.tar.gz.sha256').write_text(hashlib.sha256(archive.read_bytes()).hexdigest() + '  remnacust-core.tar.gz\n', encoding='utf-8', newline='\n')
+dockerfile.write_text(recipe, encoding='utf-8', newline='\n')
 print(f'{len(lock["files"])} source files, {archive.stat().st_size} bytes')

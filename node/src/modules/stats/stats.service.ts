@@ -10,6 +10,10 @@ import { ERRORS } from '@libs/contracts/constants';
 
 import { GetTorrentBlockerReportsCountQuery } from '../_plugin/queries/get-torrent-blocker-reports-count';
 import { GetInterfaceStatsQuery } from '../network-stats/queries/get-interface-stats/get-interface-stats.query';
+import { InternalService } from '../internal/internal.service';
+import { readCoreIncarnation } from '../xray-core/core-incarnation';
+import { readProfileTraffic } from '../xray-core/profile-traffic';
+import { XrayProcessService } from '../xray-core/xray-process.service';
 import { IGetUserOnlineStatusRequest } from './interfaces';
 import {
     GetAllInboundsStatsResponseModel,
@@ -29,6 +33,8 @@ export class StatsService {
     constructor(
         @InjectXtls() private readonly xtlsSdk: XtlsApi,
         private readonly queryBus: QueryBus,
+        private readonly xrayProcess: XrayProcessService,
+        private readonly internalService: InternalService,
     ) {}
     private readonly logger = new Logger(StatsService.name);
 
@@ -66,6 +72,9 @@ export class StatsService {
             const reportsCount = await this.queryBus.execute(
                 new GetTorrentBlockerReportsCountQuery(),
             );
+            const bindingTraffic = this.internalService.hasProfileBindings()
+                ? await readProfileTraffic(this.xtlsSdk).catch(() => null)
+                : null;
 
             return {
                 isOk: true,
@@ -80,6 +89,8 @@ export class StatsService {
                         ...systemStats,
                         interface: interfaceStats,
                     },
+                    this.internalService.hasConfiguration(),
+                    bindingTraffic,
                 ),
             };
         } catch (error) {
@@ -93,6 +104,7 @@ export class StatsService {
 
     public async getUsersStats(reset: boolean): Promise<TResult<GetUsersStatsResponseModel>> {
         try {
+            const before = await readCoreIncarnation(await this.xrayProcess.getStatus());
             const response = await this.xtlsSdk.stats.getAllUsersStats(reset);
 
             if (!response.isOk || !response.data) {
@@ -101,9 +113,11 @@ export class StatsService {
                 return fail(ERRORS.FAILED_TO_GET_USERS_STATS);
             }
 
+            const after = await readCoreIncarnation(await this.xrayProcess.getStatus());
             return ok(
                 new GetUsersStatsResponseModel(
                     response.data.users.filter((user) => user.uplink !== 0 || user.downlink !== 0),
+                    before && before === after ? before : null,
                 ),
             );
 

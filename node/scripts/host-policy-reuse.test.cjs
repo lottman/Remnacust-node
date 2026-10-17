@@ -1,17 +1,21 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const path=require('node:path');
-const load=require('../../backend-3.4.4-xera/tests/load-typescript.cjs');
+const load=require('../tests/load-typescript.cjs');
 const base={version:'xera-host-policy-v2',protectedInbounds:['in'],hosts:{},groups:{}};
 function fixture(){
  let writes=0;let pid=100;
+ const pendingFiles = new Map();
  let policy={...structuredClone(base),generation:'confirmed',expiresAt:Date.now()+80000};
  let applied={generation:'confirmed',pid,destinationRules:'xera-destination-rules-v1'};
  const {HostPolicyController}=load(path.join(__dirname,'../src/modules/xray-core/host-policy.controller.ts'),{
+  './quota-recovery-fence': {...load(path.join(__dirname,'../src/modules/xray-core/quota-recovery-fence.ts')),readRecoveryFence:async()=>null},
+  './user-quota': {...load(path.join(__dirname,'../src/modules/xray-core/user-quota.ts')),userQuotaRequiredOnDisk:async()=>false},
   '@common/guards/jwt-guards':{JwtDefaultGuard:class{}},'./xray-process.service':{},
   '@common/utils/destination-rule':load(path.join(__dirname,'../src/common/utils/destination-rule.ts')),
   'node:fs/promises':{readFile:async file=>JSON.stringify(file.endsWith('status.json')?applied:policy),mkdir:async()=>{},
-   writeFile:async(file,body)=>{writes++;policy=JSON.parse(body)},rename:async()=>{applied={...applied,generation:policy.generation,pid}}},
+   open:async file=>({writeFile:async body=>{writes++;pendingFiles.set(file,JSON.parse(body));},sync:async()=>{},close:async()=>{}}),
+   rm:async()=>{},rename:async source=>{policy=pendingFiles.get(source);applied={...applied,generation:policy.generation,pid}}},
  });
  const controller=new HostPolicyController({getStatus:async()=>({up:true,pid})});
  controller.supported=async()=>true;controller.versionCache.destinationRulesSupported=true;

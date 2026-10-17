@@ -1,10 +1,12 @@
 import { z } from 'zod';
 
 import { REST_API } from '../../api';
+import { PortPlanTargetSchema } from '../../models';
 
 export namespace SyncCommand {
     export const url = REST_API.PLUGIN.SYNC;
     export const RequestSchema = z.object({
+        portPlanDelivery: PortPlanTargetSchema.refine((target) => !!target.delivery).optional(),
         plugin: z
             .object({
                 config: z.record(z.string(), z.unknown()),

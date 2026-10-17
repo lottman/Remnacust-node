@@ -1,33 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
 const path = require('node:path');
-const ts = require('typescript');
-const source = fs.readFileSync(
-    path.join(__dirname, '../src/modules/xray-core/host-policy.controller.ts'),
-    'utf8',
-);
-const output = ts.transpileModule(source, {
-    compilerOptions: {
-        module: ts.ModuleKind.CommonJS,
-        target: ts.ScriptTarget.ES2022,
-        experimentalDecorators: true,
-    },
-}).outputText;
-const ref = { exports: {} };
-new Function('require', 'module', 'exports', output)(
-    (id) =>
-        id === '@common/utils/destination-rule'
-            ? require('../../backend-3.4.4-xera/tests/load-typescript.cjs')(path.resolve(__dirname, '../src/common/utils/destination-rule.ts'))
-            : id === '@common/guards/jwt-guards'
-            ? { JwtDefaultGuard: class {} }
-            : id === './xray-process.service'
-              ? {}
-              : require(id),
-    ref,
-    ref.exports,
-);
-const schema = ref.exports.hostPolicySchema;
+const load = require('../tests/load-typescript.cjs');
+const schema = load(path.resolve(__dirname, '../src/modules/xray-core/host-policy.controller.ts'), {
+    '@common/utils/destination-rule': load(path.resolve(__dirname, '../src/common/utils/destination-rule.ts')),
+    '@common/guards/jwt-guards': { JwtDefaultGuard: class {} },
+    './xray-process.service': {},
+}).hostPolicySchema;
 const id = '1'.repeat(32);
 const email = '42~' + 'a'.repeat(24) + '~h' + id;
 const valid = () => ({

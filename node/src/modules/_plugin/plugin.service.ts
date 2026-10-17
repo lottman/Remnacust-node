@@ -1,6 +1,6 @@
 import { hasher } from 'node-object-hash';
 
-import { Injectable, Logger } from '@nestjs/common';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { CommandBus, QueryBus } from '@nestjs/cqrs';
 
 import { NodePluginSchema, type TNodePlugin } from '@remnawave/node-plugins';
@@ -11,6 +11,8 @@ import { XRAY_TORRENT_BLOCKER_OUTBOUND_TAG } from '@libs/contracts/constants';
 import { GetAsnPrefixesQuery } from '../asn-lmdb/queries/get-asn-prefixes/get-asn-prefixes.query';
 import { RemoveOutboundCommand } from '../handler/commands/remove-outbound/remove-outbound.command';
 import { StopXrayCommand } from '../xray-core/commands/stop-xray';
+import { coreManagement } from '../xray-core/core-management';
+import { PortPlanStateStore, portPlanInputsHash } from '../xray-core/port-plan-state';
 import { SyncRequestDto } from './dtos';
 import { GenericResponseModel } from './models';
 import { TorrentBlockerReportsResponseModel } from './models/torrent-blocker-reports.response.model';
@@ -19,6 +21,7 @@ import { PluginStateService } from './services/plugin-state.service';
 
 @Injectable()
 export class PluginService {
+    private readonly portPlans = new PortPlanStateStore();
     private readonly logger = new Logger(PluginService.name);
     private readonly hashFn = hasher({ trim: true, sort: false }).hash;
 
@@ -30,24 +33,42 @@ export class PluginService {
     ) {}
 
     public async sync(body: SyncRequestDto): Promise<TResult<GenericResponseModel>> {
+        return coreManagement.run(async () => {
+            if (body.portPlanDelivery) {
+                await this.portPlans.begin(body.portPlanDelivery);
+                await this.portPlans.notePluginInputs(
+                    body.portPlanDelivery,
+                    portPlanInputsHash(body.plugin),
+                );
+            } else if ((await this.portPlans.read())?.delivery)
+                throw new ConflictException('This node requires an owned port-plan delivery');
+            return this.syncLocked(body);
+        });
+    }
+
+    private async syncLocked(body: SyncRequestDto): Promise<TResult<GenericResponseModel>> {
         try {
             const { plugin } = body;
+            const liveDelivery = !!body.portPlanDelivery;
 
             if (!plugin) {
                 if (!this.state.hasActivePlugin()) {
-                    return ok(new GenericResponseModel(false));
+                    return ok(new GenericResponseModel(liveDelivery));
                 }
 
                 this.logger.log(
                     '[PLUGIN] Received empty plugins, but there is an active plugin. Cleaning up...',
                 );
+                if (body.portPlanDelivery)
+                    await this.portPlans.markPluginDirty(body.portPlanDelivery);
                 await this.resetPlugins();
-                await this.commandBus.execute(
-                    new StopXrayCommand({
-                        withOnlineCheck: true,
-                        withPluginCleanup: false,
-                    }),
-                );
+                if (!liveDelivery)
+                    await this.commandBus.execute(
+                        new StopXrayCommand({
+                            withOnlineCheck: true,
+                            withPluginCleanup: false,
+                        }),
+                    );
 
                 return ok(new GenericResponseModel(true));
             }
@@ -55,6 +76,7 @@ export class PluginService {
             const configHash = this.hashFn(plugin.config);
 
             if (!this.state.isConfigChanged(configHash)) {
+                this.state.setPluginConfigDetails(plugin.uuid, plugin.name);
                 this.logger.debug('[PLUGIN] Config unchanged. Skipping sync.');
                 return ok(new GenericResponseModel(true));
             }
@@ -62,6 +84,7 @@ export class PluginService {
             const parsed = await NodePluginSchema.safeParseAsync(plugin.config);
 
             if (!parsed.success) {
+                if (liveDelivery) return ok(new GenericResponseModel(false));
                 this.logger.error(`[PLUGIN] Invalid config: ${JSON.stringify(parsed.error)}`);
                 await this.resetPlugins();
                 await this.commandBus.execute(
@@ -83,6 +106,8 @@ export class PluginService {
 
             const sharedMap = await this.resolveSharedLists(pluginData.sharedLists);
 
+            if (body.portPlanDelivery) await this.portPlans.markPluginDirty(body.portPlanDelivery);
+
             this.state.resetState();
             this.state.cleanUpActivePlugin();
             await this.nftService.recreateTables();
@@ -103,6 +128,9 @@ export class PluginService {
             const wasEnabled = !!currentTorrentBlocker;
             const nowEnabled = !!pluginData.torrentBlocker?.enabled;
 
+            // A versioned delivery reconciles the full config next. Its plugin
+            // preparation must not stop the process or mutate old live routes.
+            if (liveDelivery) return ok(new GenericResponseModel(true));
             if (wasEnabled && !nowEnabled && !pluginData.torrentBlocker?.includeRuleTags) {
                 await this.commandBus.execute(
                     new RemoveOutboundCommand(XRAY_TORRENT_BLOCKER_OUTBOUND_TAG),

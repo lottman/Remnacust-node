@@ -12,6 +12,7 @@ export namespace GetUsersStatsCommand {
 
     export const ResponseSchema = z.object({
         response: z.object({
+            coreProcessId: z.uuid().nullable().optional(),
             users: z.array(
                 z.object({
                     username: z.string(),

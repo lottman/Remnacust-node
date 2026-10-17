@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { REST_API } from '../../api';
-import { NodeMetadataSchema, NodeSystemSchema } from '../../models';
+import { NodeMetadataSchema, NodeSystemSchema, PortPlanTargetSchema } from '../../models';
 
 export namespace StartXrayCommand {
     export const url = REST_API.XRAY.START;
@@ -33,6 +33,8 @@ export namespace StartXrayCommand {
             metadata: NodeMetadataSchema.optional(),
             integrations: z.record(z.string(), z.unknown()).optional(),
             forceRestart: z.boolean().default(false),
+            requireLiveApply: z.boolean().optional(),
+            portPlan: PortPlanTargetSchema.optional(),
             hashes: z.object({
                 emptyConfig: z.string(),
                 inbounds: z.array(

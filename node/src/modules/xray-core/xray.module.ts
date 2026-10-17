@@ -6,9 +6,12 @@ import { COMMANDS } from './commands';
 import { CoreLoaderService } from './core-loader.service';
 import { GeodataService } from './geodata.service';
 import { HostPolicyController } from './host-policy.controller';
+import { LiveCoreService } from './live-core.service';
 import { ManagedCoreController } from './managed-core.controller';
 import { ManagedCoreStore } from './managed-core.store';
 import { NodeReconciliationService } from './node-reconciliation.service';
+import { UsageArchiveController } from './usage-archive.controller';
+import { UsageReceiptController } from './usage-receipt.controller';
 import { XrayProcessService } from './xray-process.service';
 import { XrayController } from './xray.controller';
 import { XrayService } from './xray.service';
@@ -17,6 +20,7 @@ import { XrayService } from './xray.service';
     imports: [InternalModule, CqrsModule],
     providers: [
         XrayService,
+        LiveCoreService,
         NodeReconciliationService,
         XrayProcessService,
         GeodataService,
@@ -24,7 +28,13 @@ import { XrayService } from './xray.service';
         { provide: ManagedCoreStore, useFactory: () => new ManagedCoreStore() },
         ...COMMANDS,
     ],
-    controllers: [XrayController, ManagedCoreController, HostPolicyController],
+    controllers: [
+        XrayController,
+        ManagedCoreController,
+        HostPolicyController,
+        UsageReceiptController,
+        UsageArchiveController,
+    ],
     exports: [XrayService, XrayProcessService],
 })
 export class XrayModule implements OnModuleDestroy {

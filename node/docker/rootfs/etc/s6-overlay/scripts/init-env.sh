@@ -39,6 +39,9 @@ if [ -n "${CUSTOM_CORE_URL:-}" ]; then
     echo "[init-env] custom core downloaded and installed successfully"
 fi
 
+node /etc/s6-overlay/scripts/core-boot.cjs
+selection_status=$?
+case "$selection_status" in 0|75) ;; *) exit "$selection_status" ;; esac
 XRAY_CORE_VERSION=$(/usr/local/bin/rw-core version | head -n 1)
 printf '%s' "$XRAY_CORE_VERSION" > "$ENV_DIR/XRAY_CORE_VERSION"
 echo "[init-env] Xray version: $XRAY_CORE_VERSION"

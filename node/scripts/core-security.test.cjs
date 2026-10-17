@@ -3,7 +3,7 @@ const { mkdtemp, rm, stat } = require('node:fs/promises');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const { test } = require('node:test');
-const load = require('../../backend-3.4.4-xera/tests/load-typescript.cjs');
+const load = require('../tests/load-typescript.cjs');
 
 test('custom-core download failure never reports successful preparation', async () => {
     let renamed = false;

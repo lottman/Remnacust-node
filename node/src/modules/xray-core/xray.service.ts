@@ -34,7 +34,9 @@ import { GetTorrentBlockerStateQuery } from '../_plugin/queries/get-torrent-bloc
 import { InternalService } from '../internal/internal.service';
 import { GetInterfaceStatsQuery } from '../network-stats/queries/get-interface-stats/get-interface-stats.query';
 import { CoreLoaderService } from './core-loader.service';
+import { coreManagement } from './core-management';
 import { GeodataService } from './geodata.service';
+import { LiveCoreService } from './live-core.service';
 import {
     ManagedCoreStore,
     CoreAction,
@@ -49,6 +51,8 @@ import {
     StopXrayResponseModel,
 } from './models';
 import { NodeReconciliationService } from './node-reconciliation.service';
+import { PortPlanStateStore, portPlanInputsHash } from './port-plan-state';
+import { makeProfileInput } from './profile-input';
 import { XrayProcessService } from './xray-process.service';
 
 const XRAY_LOG_FILE = '/var/log/xray/current' as const;
@@ -63,6 +67,7 @@ class XrayProcessDownError extends Error {
 
 @Injectable()
 export class XrayService implements OnApplicationBootstrap {
+    private readonly portPlans = new PortPlanStateStore();
     private readonly logger = new Logger(XrayService.name);
     private readonly disableHashedSetCheck: boolean;
     private readonly internal: {
@@ -89,6 +94,7 @@ export class XrayService implements OnApplicationBootstrap {
         private readonly queryBus: QueryBus,
         private readonly commandBus: CommandBus,
         private readonly reconciliation: NodeReconciliationService,
+        private readonly liveCore: LiveCoreService,
     ) {
         this.internal = {
             socketPath: this.configService.getOrThrow('INTERNAL_SOCKET_PATH'),
@@ -104,6 +110,7 @@ export class XrayService implements OnApplicationBootstrap {
     }
 
     async onApplicationBootstrap() {
+        this.isXrayOnline = false;
         try {
             if ((await this.managedCore.load()).paused) await this.xrayProcess.stop();
             await this.refreshXrayVersion();
@@ -116,11 +123,16 @@ export class XrayService implements OnApplicationBootstrap {
         } catch (error: unknown) {
             this.logger.error(`Error in Application Bootstrap: ${error}`);
         }
-
-        this.isXrayOnline = false;
     }
 
     public async startXray(
+        body: StartXrayCommand.Request,
+        ip: string,
+    ): Promise<TResult<StartXrayResponseModel>> {
+        return coreManagement.run(() => this.startXrayLocked(body, ip));
+    }
+
+    private async startXrayLocked(
         body: StartXrayCommand.Request,
         ip: string,
     ): Promise<TResult<StartXrayResponseModel>> {
@@ -148,8 +160,57 @@ export class XrayService implements OnApplicationBootstrap {
         }
 
         this.isXrayStartedProccesing = true;
+        let preserveRunningCore = this.isXrayOnline;
+        let requireLiveApply = !!body.internals.requireLiveApply;
+        const portPlan = body.internals.portPlan;
+        const rawProfileGraphs = body.xrayConfig.remnacustProfileGraphs;
 
         try {
+            if (rawProfileGraphs !== undefined &&
+                (!portPlan?.enabled || !portPlan.delivery ||
+                    !(await this.liveCore.profilesSupported(this.xrayPath))))
+                throw new Error('This profile graph delivery requires a versioned port plan and a compatible core');
+            const savedPortPlan = await this.portPlans.read();
+            const inputsHash = portPlan?.delivery
+                ? portPlanInputsHash(
+                      body.xrayConfig,
+                      body.internals.integrations,
+                      body.internals.metadata,
+                  )
+                : undefined;
+            requireLiveApply ||=
+                !body.internals.forceRestart && (!!savedPortPlan?.required || !!portPlan?.enabled);
+            if (savedPortPlan && !portPlan)
+                throw new Error(
+                    'This node has a saved port plan; an unversioned configuration cannot replace it',
+                );
+            if (body.internals.requireLiveApply && body.internals.forceRestart)
+                throw new Error('A port plan cannot request a maintenance restart');
+            let liveSupported: boolean | undefined;
+            if (requireLiveApply || portPlan?.enabled || savedPortPlan?.required) {
+                liveSupported = await this.liveCore.supported(this.xrayPath);
+                if (!liveSupported)
+                    throw new Error(
+                        'Update Xray Core: this port plan requires native live application',
+                    );
+                if (requireLiveApply) {
+                    preserveRunningCore = (await this.xrayProcess.getStatus()).up;
+                    if (!preserveRunningCore) this.isXrayOnline = false;
+                }
+            }
+            if (
+                this.reconciliation &&
+                !this.reconciliation.accepts(body.internals.reconciliation)
+            ) {
+                throw new Error(
+                    'An older device revision cannot replace the configuration already applied by this node',
+                );
+            }
+            if (portPlan) await this.portPlans.begin(portPlan);
+            if (!this.isXrayOnline && !body.internals.forceRestart) {
+                const status = await this.xrayProcess.getStatus();
+                if (status.up) this.isXrayOnline = (await this.xtlsSdk.stats.getSysStats()).isOk;
+            }
             const integrations = await this.integrations.sync(
                 body.internals.integrations,
                 body.internals.metadata,
@@ -170,7 +231,14 @@ export class XrayService implements OnApplicationBootstrap {
                 );
             }
 
-            if (this.isXrayOnline && !this.disableHashedSetCheck && !body.internals.forceRestart) {
+            if (
+                this.isXrayOnline &&
+                !this.disableHashedSetCheck &&
+                !body.internals.forceRestart &&
+                (!portPlan?.delivery ||
+                    (!savedPortPlan?.pluginDirty &&
+                        savedPortPlan?.appliedInputsHash === inputsHash))
+            ) {
                 const { isOk } = await this.xtlsSdk.stats.getSysStats();
 
                 let shouldRestart = false;
@@ -185,6 +253,7 @@ export class XrayService implements OnApplicationBootstrap {
                 }
 
                 if (!shouldRestart) {
+                    if (portPlan) await this.portPlans.complete(portPlan, inputsHash);
                     await this.reconciliation?.enroll(body.internals.reconciliation);
                     return ok(
                         new StartXrayResponseModel(
@@ -206,13 +275,44 @@ export class XrayService implements OnApplicationBootstrap {
 
             const tblockerState = await this.queryBus.execute(new GetTorrentBlockerStateQuery());
 
+            const rootSource = { ...body.xrayConfig };
+            delete rootSource.remnacustProfileGraphs;
             const fullConfig = generateApiConfig({
-                config: body.xrayConfig,
+                config: rootSource,
                 torrentBlockerState: tblockerState,
                 internal: this.internal,
             });
-
-            await this.internalService.extractUsersFromConfig(body.internals.hashes, fullConfig);
+            const profileInput = rawProfileGraphs !== undefined
+                ? makeProfileInput(fullConfig, rawProfileGraphs, portPlan!, inputsHash!)
+                : undefined;
+            if (profileInput) {
+                const tags = new Map<string, string>();
+                const geodata = new Set(profileInput.graphs.map(graph => portPlanInputsHash(graph.config.geodata)));
+                if (geodata.size > 1)
+                    throw new Error('Profiles on one node must select the same core and geodata release');
+                for (const graph of profileInput.graphs) {
+                    const tag = (graph.config.inbounds as { tag: string }[])[0].tag;
+                    const owner = `${graph.configProfileUuid}:${graph.configProfileInboundUuid}`;
+                    if (tags.has(tag) && tags.get(tag) !== owner)
+                        throw new Error('User reconciliation requires distinct inbound tags across different source inbounds');
+                    tags.set(tag, owner);
+                }
+                for (const graph of profileInput.graphs)
+                    graph.config = generateApiConfig({
+                        config: graph.config, torrentBlockerState: tblockerState,
+                        internal: this.internal, control: false,
+                    });
+            }
+            const rememberConfiguration = () => this.internalService.extractUsersFromConfig(
+                body.internals.hashes,
+                profileInput ? { ...fullConfig, inbounds: profileInput.graphs.flatMap(graph =>
+                    Array.isArray(graph.config.inbounds) ? graph.config.inbounds : []) } : fullConfig,
+                profileInput?.graphs.map(graph => ({
+                    bindingUuid: graph.bindingUuid,
+                    inboundTag: (graph.config.inbounds as { tag: string }[])[0].tag,
+                })),
+                profileInput,
+            );
 
             if ((await this.managedCore.load()).paused) {
                 return ok(
@@ -228,6 +328,55 @@ export class XrayService implements OnApplicationBootstrap {
 
             await this.coreLoaderService.prepare(fullConfig.geodata);
             await this.geodataService.prepare(fullConfig.geodata);
+            if (profileInput) {
+                for (const graph of profileInput.graphs) {
+                    await this.coreLoaderService.prepare(graph.config.geodata);
+                    await this.geodataService.prepare(graph.config.geodata);
+                }
+            }
+
+            liveSupported ??= await this.liveCore.supported(this.xrayPath);
+            if (requireLiveApply && preserveRunningCore && !this.isXrayOnline)
+                throw new Error(
+                    'The running core is not ready for live application; its process was preserved',
+                );
+            if (this.isXrayOnline && liveSupported && !body.internals.forceRestart) {
+                let replay = false;
+                if (profileInput) {
+                    const acknowledgement = await this.liveCore.applyProfiles(
+                        this.xrayPath, this.internal.xtlsApiSocketPath, profileInput,
+                    );
+                    replay = acknowledgement.unchanged;
+                    if (replay && (!this.internalService.hasProfileBindings() || !this.internalService.hasConfiguration()))
+                        throw new Error('The core retained a replayed delivery; request a fresh panel delivery to rebuild node user state');
+                } else await this.liveCore.apply(
+                    this.xrayPath,
+                    this.internal.xtlsApiSocketPath,
+                    fullConfig,
+                );
+                // Replay preserves subsequent native user mutations. Replacing
+                // the index from an old source would resurrect stale membership.
+                if (!replay) await rememberConfiguration();
+                await this.commandBus.execute(new RunPostStartCommand(body.internals.metadata));
+                if (portPlan) await this.portPlans.complete(portPlan, inputsHash);
+                await this.reconciliation?.enroll(body.internals.reconciliation);
+                return ok(
+                    new StartXrayResponseModel(
+                        true,
+                        this.xrayVersion,
+                        null,
+                        { version: this.nodeVersion },
+                        system,
+                    ),
+                );
+            }
+
+            if (liveSupported) {
+                await validateCoreConfig(this.xrayPath, fullConfig, this.managedCore.root);
+                if (profileInput) await this.liveCore.prepareProfileRestart(this.xrayPath, profileInput);
+                else await this.liveCore.prepareRestart(this.xrayPath, fullConfig);
+            }
+            if (!profileInput) await rememberConfiguration();
 
             const xrayProcess = await this.restartXrayProcess();
 
@@ -274,10 +423,12 @@ export class XrayService implements OnApplicationBootstrap {
             this.isXrayOnline = true;
 
             await this.refreshXrayVersion();
+            if (profileInput) await rememberConfiguration();
 
             this.logger.log(`✔ XRay Core v${this.xrayVersion} is up and running.`);
 
             await this.commandBus.execute(new RunPostStartCommand(body.internals.metadata));
+            if (portPlan) await this.portPlans.complete(portPlan, inputsHash);
             await this.reconciliation?.enroll(body.internals.reconciliation);
 
             return ok(
@@ -301,8 +452,8 @@ export class XrayService implements OnApplicationBootstrap {
 
             return ok(
                 new StartXrayResponseModel(
-                    false,
-                    null,
+                    requireLiveApply && (this.isXrayOnline || preserveRunningCore),
+                    requireLiveApply ? this.xrayVersion : null,
                     errorMessage,
                     {
                         version: this.nodeVersion,
@@ -323,6 +474,13 @@ export class XrayService implements OnApplicationBootstrap {
     }
 
     public async stopXray(args: {
+        withPluginCleanup?: boolean;
+        withOnlineCheck?: boolean;
+    }): Promise<TResult<StopXrayResponseModel>> {
+        return coreManagement.run(() => this.stopXrayLocked(args));
+    }
+
+    private async stopXrayLocked(args: {
         withPluginCleanup?: boolean;
         withOnlineCheck?: boolean;
     }): Promise<TResult<StopXrayResponseModel>> {
@@ -425,14 +583,17 @@ export class XrayService implements OnApplicationBootstrap {
         const wasUp = (await this.xrayProcess.getStatus()).up;
         const temporary = join(this.managedCore.root, request.id + '.staged');
         let switched = false;
+        let releaseManagement: (() => void) | undefined;
         try {
             const config = await this.internalService.getXrayConfig();
+            const profileInput = this.internalService.getProfileInput();
             let selection: CoreSelection = {
                 mode: before.mode,
                 paused: before.paused,
                 binary: before.binary,
             };
             if (request.action === 'stop') {
+                releaseManagement = coreManagement.acquire();
                 await this.managedCore.phase('stopping');
                 await this.xrayProcess.stop();
                 this.isXrayOnline = false;
@@ -489,24 +650,30 @@ export class XrayService implements OnApplicationBootstrap {
                         binary: await this.managedCore.identity(this.managedCore.stock),
                     };
                 } else if (request.action === 'profile') {
+                    releaseManagement = coreManagement.acquire();
                     selection = { mode: 'profile', paused: before.paused };
                     switched = true;
                     await this.managedCore.select(selection);
-                    await this.coreLoaderService.prepare(config.geodata);
+                    await this.coreLoaderService.prepare(profileInput?.graphs[0]?.config.geodata ?? config.geodata);
                 }
                 await this.managedCore.phase('validating');
-                await validateCoreConfig(
-                    selection.binary?.path ?? this.managedCore.link,
-                    config,
-                    this.managedCore.root,
-                );
+                const binary = selection.binary?.path ?? this.managedCore.link;
+                if (profileInput) {
+                    await this.liveCore.validateProfiles(binary, profileInput);
+                    for (const graph of profileInput.graphs)
+                        await validateCoreConfig(binary, graph.config, this.managedCore.root);
+                } else await validateCoreConfig(binary, config, this.managedCore.root);
                 if (request.action !== 'check') {
+                    releaseManagement ??= coreManagement.acquire();
                     if (request.action === 'start' || request.action === 'restart')
                         selection.paused = false;
                     switched = true;
                     await this.managedCore.phase('switching');
                     await this.managedCore.select(selection);
-                    if (!selection.paused) await this.startManagedCore();
+                    if (!selection.paused) {
+                        if (profileInput) await this.liveCore.prepareProfileRestart(binary, profileInput);
+                        await this.startManagedCore();
+                    }
                 }
             }
             await this.refreshXrayVersion();
@@ -535,6 +702,7 @@ export class XrayService implements OnApplicationBootstrap {
                 );
             }
         } finally {
+            releaseManagement?.();
             await rm(temporary, { force: true }).catch(() => undefined);
         }
     }
@@ -551,12 +719,19 @@ export class XrayService implements OnApplicationBootstrap {
 
     public async getNodeHealthCheck(): Promise<TResult<GetNodeHealthCheckResponseModel>> {
         try {
+            const status = await this.xrayProcess.getStatus();
+            if (!status.up) this.isXrayOnline = false;
+            else if (!this.isXrayOnline)
+                this.isXrayOnline = (await this.xtlsSdk.stats.getSysStats()).isOk;
             return ok(
                 new GetNodeHealthCheckResponseModel(
                     true,
                     this.isXrayOnline,
                     this.xrayVersion,
                     this.nodeVersion,
+                    await this.liveCore.supported(this.xrayPath).catch(() => false),
+                    (await this.portPlans.read())?.delivery?.epoch ?? '0',
+                    await this.liveCore.profilesSupported(this.xrayPath).catch(() => false),
                 ),
             );
         } catch (error) {

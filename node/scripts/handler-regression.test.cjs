@@ -10,6 +10,7 @@ const output = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/m
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, experimentalDecorators: true },
 }).outputText;
 new Function('require', 'module', 'exports', output)((id) => {
+    if (id === '../xray-core/core-management') return require('../tests/load-typescript.cjs')(path.join(__dirname, '../src/modules/xray-core/core-management.ts'));
     if (id === 'enhanced-ms') return { default: () => '' };
     if (id === '@nestjs/common') return { Injectable: () => (value) => value, Logger: class { log() {} debug() {} error() {} } };
     if (id === '@remnawave/xtls-sdk-nestjs') return { InjectXtls: () => () => {} };

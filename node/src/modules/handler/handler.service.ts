@@ -17,6 +17,7 @@ import { ERRORS } from '@libs/contracts/constants/errors';
 
 import { DropConnectionsEvent } from '../_plugin/events/drop-connections';
 import { InternalService } from '../internal/internal.service';
+import { coreManagement } from '../xray-core/core-management';
 import {
     AddUserRequestDto,
     AddUsersRequestDto,
@@ -25,19 +26,34 @@ import {
     RemoveUserRequestDto,
     RemoveUsersRequestDto,
 } from './dtos';
+import { ProfileUserHandler } from './profile-user-handler';
 import { AddUserResponseModel, RemoveUserResponseModel, GenericResponseModel } from './models';
-import { addMasqueUser } from './masque-user';
 
 @Injectable()
 export class HandlerService implements OnModuleInit {
     private readonly logger = new Logger(HandlerService.name);
     private capNetAdminAvailable = false;
+    private readonly users: ProfileUserHandler;
 
     constructor(
         @InjectXtls() private readonly xtlsApi: XtlsApi,
         private readonly internalService: InternalService,
         private readonly eventBus: EventBus,
-    ) {}
+    ) {
+        this.users = new ProfileUserHandler(xtlsApi,
+            tag => this.internalService.getProfileBindingsForTag(tag));
+    }
+
+    private requireConfiguration(): void {
+        if (!this.internalService.hasConfiguration())
+            throw new Error('Node user state is not synchronized; retry after panel reconciliation');
+    }
+
+    private async revokeRetiredUser(username: string): Promise<void> {
+        if (!this.internalService.hasProfileBindings()) return;
+        const result = await this.users.removeRetiredUser(username);
+        if (!result.isOk) throw new Error(result.message ?? 'Retired user removal did not finish');
+    }
 
     public async onModuleInit(): Promise<void> {
         try {
@@ -54,7 +70,12 @@ export class HandlerService implements OnModuleInit {
     }
 
     public async addUser(data: AddUserRequestDto): Promise<TResult<AddUserResponseModel>> {
+        return coreManagement.run(() => this.addUserLocked(data));
+    }
+
+    private async addUserLocked(data: AddUserRequestDto): Promise<TResult<AddUserResponseModel>> {
         try {
+            this.requireConfiguration();
             const { data: requestData, hashData } = data;
             const response: Array<ISdkResponse<AddUserResponseModelFromSdk>> = [];
             const userId = requestData[0].username;
@@ -64,24 +85,35 @@ export class HandlerService implements OnModuleInit {
                 this.internalService.addXtlsConfigInbound(item.tag);
             }
 
-            if (userId.includes('~') && !hashData.prevVlessUuid &&
-                requestData.every((item) => this.internalService.hasUserInInbound(item.tag, hashData.vlessUuid)) &&
-                [...this.internalService.getXtlsConfigInbounds()].every((tag) =>
-                    !this.internalService.hasUserInInbound(tag, hashData.vlessUuid) ||
-                    requestData.some((item) => item.tag === tag))) {
+            if (
+                userId.includes('~') &&
+                !hashData.prevVlessUuid &&
+                requestData.every((item) =>
+                    this.internalService.hasUserInInbound(item.tag, hashData.vlessUuid),
+                ) &&
+                [...this.internalService.getXtlsConfigInbounds()].every(
+                    (tag) =>
+                        !this.internalService.hasUserInInbound(tag, hashData.vlessUuid) ||
+                        requestData.some((item) => item.tag === tag),
+                )
+            ) {
                 return ok(new AddUserResponseModel(true, null));
             }
 
-            if (hashData.prevVlessUuid && !userId.includes('~') &&
-                process.env.XERA_DEVICE_REVOKE !== 'true') {
+            if (
+                hashData.prevVlessUuid &&
+                !userId.includes('~') &&
+                process.env.XERA_DEVICE_REVOKE !== 'true'
+            ) {
                 userIps = await this.getUserIps(userId);
             }
 
             for (const tag of this.internalService.getXtlsConfigInbounds()) {
                 this.logger.debug(`Removing user: ${userId} from tag: ${tag}`);
 
-                const removed = await this.xtlsApi.handler.removeUser(tag, userId);
-                if (!removed.isOk) throw new Error(removed.message ?? 'Failed to remove previous inbound access');
+                const removed = await this.users.removeUser(tag, userId);
+                if (!removed.isOk)
+                    throw new Error(removed.message ?? 'Failed to remove previous inbound access');
 
                 if (hashData.prevVlessUuid) {
                     await this.internalService.removeUserFromInbound(tag, hashData.prevVlessUuid);
@@ -101,7 +133,7 @@ export class HandlerService implements OnModuleInit {
 
                 switch (item.type) {
                     case 'trojan':
-                        tempRes = await this.xtlsApi.handler.addTrojanUser({
+                        tempRes = await this.users.addTrojanUser({
                             tag: item.tag,
                             username: item.username,
                             password: item.password,
@@ -116,7 +148,7 @@ export class HandlerService implements OnModuleInit {
                         response.push(tempRes);
                         break;
                     case 'vless':
-                        tempRes = await this.xtlsApi.handler.addVlessUser({
+                        tempRes = await this.users.addVlessUser({
                             tag: item.tag,
                             username: item.username,
                             uuid: item.uuid,
@@ -132,7 +164,7 @@ export class HandlerService implements OnModuleInit {
                         response.push(tempRes);
                         break;
                     case 'shadowsocks':
-                        tempRes = await this.xtlsApi.handler.addShadowsocksUser({
+                        tempRes = await this.users.addShadowsocksUser({
                             tag: item.tag,
                             username: item.username,
                             password: item.password,
@@ -149,7 +181,7 @@ export class HandlerService implements OnModuleInit {
                         response.push(tempRes);
                         break;
                     case 'shadowsocks22':
-                        tempRes = await this.xtlsApi.handler.addShadowsocks2022User({
+                        tempRes = await this.users.addShadowsocks2022User({
                             tag: item.tag,
                             username: item.username,
                             key: item.password,
@@ -165,12 +197,20 @@ export class HandlerService implements OnModuleInit {
                         response.push(tempRes);
                         break;
                     case 'masque':
-                        tempRes = await addMasqueUser(this.xtlsApi, { tag: item.tag, username: item.username, password: item.password });
-                        if (tempRes.isOk) await this.internalService.addUserToInbound(item.tag, hashData.vlessUuid);
+                        tempRes = await this.users.addMasqueUser({
+                            tag: item.tag,
+                            username: item.username,
+                            password: item.password,
+                        });
+                        if (tempRes.isOk)
+                            await this.internalService.addUserToInbound(
+                                item.tag,
+                                hashData.vlessUuid,
+                            );
                         response.push(tempRes);
                         break;
                     case 'hysteria':
-                        tempRes = await this.xtlsApi.handler.addHysteriaUser({
+                        tempRes = await this.users.addHysteriaUser({
                             tag: item.tag,
                             username: item.username,
                             uuid: item.password,
@@ -211,26 +251,35 @@ export class HandlerService implements OnModuleInit {
     }
 
     public async removeUser(data: RemoveUserRequestDto): Promise<TResult<RemoveUserResponseModel>> {
+        return coreManagement.run(() => this.removeUserLocked(data));
+    }
+
+    private async removeUserLocked(
+        data: RemoveUserRequestDto,
+    ): Promise<TResult<RemoveUserResponseModel>> {
         try {
             const { username, hashData } = data;
+            this.requireConfiguration();
             const response: Array<ISdkResponse<RemoveUserResponseModelFromSdk>> = [];
 
             const inboundTags = this.internalService.getXtlsConfigInbounds();
 
             if (inboundTags.size === 0) {
+                await this.revokeRetiredUser(username);
                 return ok(new RemoveUserResponseModel(true, null));
             }
 
             // The patched core revokes sessions by authenticated user ID, including
             // old shared credentials during cutover, without affecting the same NAT.
-            const userIps = process.env.XERA_DEVICE_REVOKE === 'true' || username.includes('~')
-                ? null
-                : await this.getUserIps(username);
+            const userIps =
+                process.env.XERA_DEVICE_REVOKE === 'true' || username.includes('~')
+                    ? null
+                    : await this.getUserIps(username);
 
             for (const tag of inboundTags) {
                 this.logger.debug(`Removing user: ${username} from tag: ${tag}`);
 
-                const tempRes = await this.xtlsApi.handler.removeUser(tag, username);
+                const tempRes = await this.users.removeUser(tag, username);
 
                 if (tempRes.isOk) {
                     await this.internalService.removeUserFromInbound(tag, hashData.vlessUuid);
@@ -238,6 +287,7 @@ export class HandlerService implements OnModuleInit {
                 response.push(tempRes);
             }
 
+            await this.revokeRetiredUser(username);
             this.eventBus.publish(new DropConnectionsEvent(userIps));
 
             if (response.some((res) => !res.isOk)) {
@@ -262,9 +312,14 @@ export class HandlerService implements OnModuleInit {
     }
 
     public async addUsers(data: AddUsersRequestDto): Promise<TResult<AddUserResponseModel>> {
+        return coreManagement.run(() => this.addUsersLocked(data));
+    }
+
+    private async addUsersLocked(data: AddUsersRequestDto): Promise<TResult<AddUserResponseModel>> {
         const tm = performance.now();
         try {
             const { affectedInboundTags, users } = data;
+            this.requireConfiguration();
 
             for (const tag of affectedInboundTags) {
                 this.internalService.addXtlsConfigInbound(tag);
@@ -276,17 +331,27 @@ export class HandlerService implements OnModuleInit {
 
             for (const user of users) {
                 if (user.userData.userId.includes('~')) {
-                    const currentTags = [...this.internalService.getXtlsConfigInbounds()]
-                        .filter((tag) => this.internalService.hasUserInInbound(tag, user.userData.vlessUuid));
+                    const currentTags = [...this.internalService.getXtlsConfigInbounds()].filter(
+                        (tag) =>
+                            this.internalService.hasUserInInbound(tag, user.userData.vlessUuid),
+                    );
                     const requestedTags = new Set(user.inboundData.map((item) => item.tag));
-                    if (currentTags.length === requestedTags.size &&
-                        currentTags.every((tag) => requestedTags.has(tag))) {
+                    if (
+                        currentTags.length === requestedTags.size &&
+                        currentTags.every((tag) => requestedTags.has(tag))
+                    ) {
                         continue;
                     }
                 }
                 for (const tag of this.internalService.getXtlsConfigInbounds()) {
-                    const removed = await this.xtlsApi.handler.removeUser(tag, user.userData.userId);
-                    if (!removed.isOk) throw new Error(removed.message ?? 'Failed to remove previous inbound access');
+                    const removed = await this.users.removeUser(
+                        tag,
+                        user.userData.userId,
+                    );
+                    if (!removed.isOk)
+                        throw new Error(
+                            removed.message ?? 'Failed to remove previous inbound access',
+                        );
 
                     await this.internalService.removeUserFromInbound(tag, user.userData.hashUuid);
                 }
@@ -296,7 +361,7 @@ export class HandlerService implements OnModuleInit {
 
                     switch (item.type) {
                         case 'trojan':
-                            tempRes = await this.xtlsApi.handler.addTrojanUser({
+                            tempRes = await this.users.addTrojanUser({
                                 tag: item.tag,
                                 username: user.userData.userId,
                                 password: user.userData.trojanPassword,
@@ -311,7 +376,7 @@ export class HandlerService implements OnModuleInit {
 
                             break;
                         case 'vless':
-                            tempRes = await this.xtlsApi.handler.addVlessUser({
+                            tempRes = await this.users.addVlessUser({
                                 tag: item.tag,
                                 username: user.userData.userId,
                                 uuid: user.userData.vlessUuid,
@@ -326,7 +391,7 @@ export class HandlerService implements OnModuleInit {
                             }
                             break;
                         case 'shadowsocks':
-                            tempRes = await this.xtlsApi.handler.addShadowsocksUser({
+                            tempRes = await this.users.addShadowsocksUser({
                                 tag: item.tag,
                                 username: user.userData.userId,
                                 password: user.userData.ssPassword,
@@ -342,10 +407,12 @@ export class HandlerService implements OnModuleInit {
                             }
                             break;
                         case 'shadowsocks22':
-                            tempRes = await this.xtlsApi.handler.addShadowsocks2022User({
+                            tempRes = await this.users.addShadowsocks2022User({
                                 tag: item.tag,
                                 username: user.userData.userId,
-                                key: item.password ?? Buffer.from(user.userData.ssPassword).toString('base64'),
+                                key:
+                                    item.password ??
+                                    Buffer.from(user.userData.ssPassword).toString('base64'),
                                 level: 0,
                             });
                             if (tempRes.isOk) {
@@ -356,11 +423,19 @@ export class HandlerService implements OnModuleInit {
                             }
                             break;
                         case 'masque':
-                            tempRes = await addMasqueUser(this.xtlsApi, { tag: item.tag, username: user.userData.userId, password: user.userData.vlessUuid });
-                            if (tempRes.isOk) await this.internalService.addUserToInbound(item.tag, user.userData.vlessUuid);
+                            tempRes = await this.users.addMasqueUser({
+                                tag: item.tag,
+                                username: user.userData.userId,
+                                password: user.userData.vlessUuid,
+                            });
+                            if (tempRes.isOk)
+                                await this.internalService.addUserToInbound(
+                                    item.tag,
+                                    user.userData.vlessUuid,
+                                );
                             break;
                         case 'hysteria':
-                            tempRes = await this.xtlsApi.handler.addHysteriaUser({
+                            tempRes = await this.users.addHysteriaUser({
                                 tag: item.tag,
                                 username: user.userData.userId,
                                 uuid: user.userData.vlessUuid,
@@ -404,11 +479,19 @@ export class HandlerService implements OnModuleInit {
     public async removeUsers(
         data: RemoveUsersRequestDto,
     ): Promise<TResult<RemoveUserResponseModel>> {
+        return coreManagement.run(() => this.removeUsersLocked(data));
+    }
+
+    private async removeUsersLocked(
+        data: RemoveUsersRequestDto,
+    ): Promise<TResult<RemoveUserResponseModel>> {
         const tm = performance.now();
         try {
             const inboundTags = this.internalService.getXtlsConfigInbounds();
+            this.requireConfiguration();
 
             if (inboundTags.size === 0) {
+                for (const user of data.users) await this.revokeRetiredUser(user.userId);
                 return ok(new RemoveUserResponseModel(true, null));
             }
 
@@ -421,14 +504,15 @@ export class HandlerService implements OnModuleInit {
             for (const user of data.users) {
                 const { userId, hashUuid } = user;
 
-                const userIps = process.env.XERA_DEVICE_REVOKE === 'true' || userId.includes('~')
-                    ? null
-                    : await this.getUserIps(userId);
+                const userIps =
+                    process.env.XERA_DEVICE_REVOKE === 'true' || userId.includes('~')
+                        ? null
+                        : await this.getUserIps(userId);
 
                 for (const tag of inboundTags) {
                     this.logger.debug(`Removing user: ${userId} from tag: ${tag}`);
 
-                    const tempRes = await this.xtlsApi.handler.removeUser(tag, userId);
+                    const tempRes = await this.users.removeUser(tag, userId);
 
                     if (tempRes.isOk) {
                         await this.internalService.removeUserFromInbound(tag, hashUuid);
@@ -436,6 +520,7 @@ export class HandlerService implements OnModuleInit {
                     removeUsersResponse.push(tempRes);
                 }
 
+                await this.revokeRetiredUser(userId);
                 this.eventBus.publish(new DropConnectionsEvent(userIps));
             }
 
@@ -524,6 +609,10 @@ export class HandlerService implements OnModuleInit {
     }
 
     public async removeOutbound(tag: string): Promise<void> {
+        return coreManagement.run(() => this.removeOutboundLocked(tag));
+    }
+
+    private async removeOutboundLocked(tag: string): Promise<void> {
         try {
             await this.xtlsApi.handler.rawClient.removeOutbound({
                 tag,

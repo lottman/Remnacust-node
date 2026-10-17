@@ -25,6 +25,7 @@ interface IRoutingXrayConfig {
 }
 
 interface IGenerateApiConfigParams {
+    control?: boolean;
     config: Record<string, unknown>;
     torrentBlockerState: {
         enabled: boolean;
@@ -39,44 +40,62 @@ interface IGenerateApiConfigParams {
 }
 
 export const generateApiConfig = (args: IGenerateApiConfigParams): Record<string, unknown> => {
-    const { config, torrentBlockerState, internal } = args;
+    const { config, torrentBlockerState, internal, control = true } = args;
+    const routingConfig = config.routing as Record<string, unknown> | undefined;
+    const usesRoutingScript =
+        typeof routingConfig?.script === 'string' && routingConfig.script.length > 0;
+    if (usesRoutingScript && torrentBlockerState.enabled)
+        throw new Error(
+            'Lua routing cannot use the rules-based Torrent Blocker. Disable the plugin or implement blocking in the routing script.',
+        );
 
     const policyConfig = config.policy as undefined | IPolicyConfig;
     const hasCapNetAdminResult = hasCapNetAdmin();
 
     const builtPolicy: IPolicyConfig = {
-        levels: {
-            '0': {
-                ...policyConfig?.levels?.['0'],
-                statsUserUplink: XRAY_DEFAULT_POLICY_MODEL.policy.levels['0'].statsUserUplink,
-                statsUserDownlink: XRAY_DEFAULT_POLICY_MODEL.policy.levels['0'].statsUserDownlink,
-                statsUserOnline: hasCapNetAdminResult,
-            },
-        },
+        levels: Object.fromEntries(
+            Object.entries({ '0': {}, ...policyConfig?.levels }).map(([level, settings]) => [
+                level,
+                {
+                    ...settings,
+                    statsUserUplink: XRAY_DEFAULT_POLICY_MODEL.policy.levels['0'].statsUserUplink,
+                    statsUserDownlink:
+                        XRAY_DEFAULT_POLICY_MODEL.policy.levels['0'].statsUserDownlink,
+                    statsUserOnline: hasCapNetAdminResult,
+                },
+            ]),
+        ),
         system: XRAY_DEFAULT_POLICY_MODEL.policy.system,
     };
 
     const result = {
         ...config,
         ...XRAY_DEFAULT_STATS_MODEL,
-        ...XRAY_DEFAULT_API_MODEL,
+        // A direct private API listener does not need to modify Lua routing.
+        // Keep the existing tunnel/rule for ordinary profiles and old cores.
+        api: control ? {
+            ...XRAY_DEFAULT_API_MODEL.api,
+            ...(usesRoutingScript ? { listen: `${internal.xtlsApiSocketPath},0600` } : {}),
+        } : config.api,
         inbounds: [
-            XRAY_API_INBOUND_MODEL({
-                xtlsApiSocketPath: internal.xtlsApiSocketPath,
-            }),
+            ...(!control || usesRoutingScript
+                ? []
+                : [XRAY_API_INBOUND_MODEL({ xtlsApiSocketPath: internal.xtlsApiSocketPath })]),
             ...(Array.isArray(config.inbounds) ? config.inbounds : []),
         ],
         outbounds: [...(Array.isArray(config.outbounds) ? config.outbounds : [])],
         policy: builtPolicy,
-        routing: {
-            ...(config.routing as unknown as Record<string, unknown>),
-            rules: [
-                XRAY_ROUTING_RULES_MODEL,
-                ...((config.routing as unknown as IRoutingXrayConfig)?.rules ?? []).filter(
-                    (rule) => rule.outboundTag !== 'REMNAWAVE_API',
-                ),
-            ],
-        },
+        routing: usesRoutingScript
+            ? { ...routingConfig }
+            : {
+                  ...routingConfig,
+                  rules: [
+                      ...(control ? [XRAY_ROUTING_RULES_MODEL] : []),
+                      ...((config.routing as unknown as IRoutingXrayConfig)?.rules ?? []).filter(
+                          (rule) => !control || rule.outboundTag !== 'REMNAWAVE_API',
+                      ),
+                  ],
+              },
     };
 
     if (torrentBlockerState.enabled) {
@@ -86,7 +105,7 @@ export const generateApiConfig = (args: IGenerateApiConfigParams): Record<string
         result.outbounds.push(XRAY_TORRENT_BLOCKER_OUTBOUND_MODEL);
 
         routing.rules.splice(
-            resolveRuleIndex(torrentBlockerState.rulePosition, routing.rules.length),
+            resolveRuleIndex(torrentBlockerState.rulePosition, routing.rules.length, control),
             0,
             XRAY_TORRENT_BLOCKER_ROUTING_RULES_MODEL({ webhookUrl }),
         );
@@ -110,14 +129,15 @@ export const generateApiConfig = (args: IGenerateApiConfigParams): Record<string
     return result;
 };
 
-const resolveRuleIndex = (position: number, rulesLength: number): number => {
-    const userRulesCount = rulesLength - 1;
+const resolveRuleIndex = (position: number, rulesLength: number, control: boolean): number => {
+    const offset = control ? 1 : 0;
+    const userRulesCount = rulesLength - offset;
 
     if (!Number.isInteger(position) || position <= 0) {
-        return 1;
+        return offset;
     }
 
-    return 1 + Math.min(position, userRulesCount);
+    return offset + Math.min(position, userRulesCount);
 };
 
 const buildWebhookUrl = (internal: { socketPath: string; token: string }): string => {

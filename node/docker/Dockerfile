@@ -20,13 +20,14 @@ RUN npm run build \
 
 FROM golang:1.27.2-alpine AS xray-device-build
 
-ARG XRAY_CORE_VERSION=v26.9.30
-ARG XRAY_CORE_COMMIT=b26a91de4f3294e26a0ad0a970b81a386a41f789
+ARG XRAY_CORE_VERSION=v26.10.10
+ARG XRAY_CORE_COMMIT=701af60772cda123492f86e383e1fdba066614a9
 RUN apk add --no-cache git
 COPY docker/remnacust-core.tar.gz docker/remnacust-core.tar.gz.sha256 /tmp/
 RUN cd /tmp && sha256sum -c remnacust-core.tar.gz.sha256 \
     && mkdir -p /src && tar -xzf remnacust-core.tar.gz -C /src \
     && cd /src && sha256sum -c core-source.sha256 \
+    && test "$(sed -n 's/.*"upstreamVersion": "\([^"]*\)".*/\1/p' core-source-lock.json)" = "${XRAY_CORE_VERSION}" \
     && test "$(sed -n 's/.*"upstreamCommit": "\([^"]*\)".*/\1/p' core-source-lock.json)" = "${XRAY_CORE_COMMIT}"
 WORKDIR /src/Xray-core-main
 RUN go test ./infra/conf ./transport/internet/xerahttp ./app/dispatcher ./app/proxyman/command ./app/commander \
@@ -37,7 +38,7 @@ RUN go test ./infra/conf ./transport/internet/xerahttp ./app/dispatcher ./app/pr
 
 FROM alpine:3.21 AS xray
 
-ARG XRAY_CORE_VERSION=v26.9.30
+ARG XRAY_CORE_VERSION=v26.10.10
 ARG UPSTREAM_REPO=XTLS
 ARG TARGETARCH
 
@@ -160,8 +161,10 @@ ENV NODE_OPTIONS="--max-http-header-size=65536"
 ENV UV_THREADPOOL_SIZE=24
 ENV XRAY_JSON_STRICT=true
 ENV XERA_DEVICE_REVOKE=true
+ENV REMNACUST_NODE_RUNTIME=1
 RUN node -e "const fs=require('fs');const app=fs.readFileSync('/opt/app/dist/main.js','utf8');if(!app.includes('xray/managed-core')||!app.includes('capabilityVersion'))throw new Error('Node image is missing core-manager v1')"
 ENV XERA_CORE_MANAGER_VERSION=1
+RUN node -e "const fs=require('fs');const app=fs.readFileSync('/opt/app/dist/main.js','utf8');if(!app.includes('remnacust-port-plan-delivery-v2'))throw new Error('Node image is missing port-plan delivery fencing')"
 ENV S6_VERBOSITY=1
 
 ENTRYPOINT ["/init"]

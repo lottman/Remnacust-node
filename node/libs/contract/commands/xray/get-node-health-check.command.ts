@@ -11,6 +11,20 @@ export namespace GetNodeHealthCheckCommand {
             xrayInternalStatusCached: z.boolean(),
             xrayVersion: z.string().nullable(),
             nodeVersion: z.string(),
+            nativePortPlansSupported: z.boolean().optional(),
+            profileGraphDeliverySupported: z.boolean().optional(),
+            portPlanStateSupported: z.boolean().optional(),
+            portPlanDeliverySupported: z.boolean().optional(),
+            portPlanDeliveryCapability: z.literal('remnacust-port-plan-delivery-v2').optional(),
+            portPlanDeliveryEpoch: z
+                .string()
+                .regex(/^(0|[1-9][0-9]{0,18})$/)
+                .refine(
+                    (value) =>
+                        /^(0|[1-9][0-9]{0,18})$/.test(value) &&
+                        BigInt(value) <= 9223372036854775807n,
+                )
+                .optional(),
         }),
     });
 

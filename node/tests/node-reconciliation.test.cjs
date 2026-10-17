@@ -88,3 +88,13 @@ test('a failed check-in sent before a successful start cannot invalidate that st
     assert.equal(state.warnings.length,0);
     service.onModuleDestroy();
 });
+
+test('older device revisions cannot overwrite a newer acknowledged node state',async()=>{
+    const {service}=fixture(); await service.onApplicationBootstrap();
+    assert.equal(service.accepts({...enrollment,revision:'11'}),false);
+    assert.equal(service.accepts({...enrollment,revision:'12'}),true);
+    assert.equal(service.accepts({...enrollment,revision:'13'}),true);
+    assert.equal(service.accepts({...enrollment,token:'b'.repeat(43),revision:'0'}),true);
+    assert.equal(service.accepts(undefined),true);
+    service.onModuleDestroy();
+});

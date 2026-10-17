@@ -5,6 +5,7 @@ import {
     chmod,
     copyFile,
     mkdir,
+    lstat,
     readFile,
     readdir,
     realpath,
@@ -19,6 +20,15 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 
 import { isIpDestinationRule } from '@common/utils/destination-rule';
+
+import { PORT_PLAN_CAPABILITY, PortPlanStateStore } from './port-plan-state';
+import {
+    QUOTA_REGISTRATION_VERSION,
+    QUOTA_WATERMARK_VERSION,
+    readQuotaJournal,
+} from './quota-ledger';
+import { QUOTA_RECOVERY_FENCE, readRecoveryFence } from './quota-recovery-fence';
+import { USER_QUOTA_VERSION, userQuotaRequiredOnDisk } from './user-quota';
 
 const run = promisify(execFile);
 export type CoreAction =
@@ -104,6 +114,15 @@ export class ManagedCoreStore {
             this.state.operation.finishedAt = new Date().toISOString();
             delete this.state.recovery;
             await this.persist();
+        }
+        // A bundled selection follows the replacement image. A rollback snapshot
+        // stored by digest remains pinned to its explicitly selected binary.
+        if (this.state.mode === 'bundled' && this.state.binary?.path === this.stock) {
+            const current = await this.identity(this.stock);
+            if (current.sha256 !== this.state.binary.sha256) {
+                this.state.binary = current;
+                await this.persist();
+            }
         }
     }
     async identity(path = this.link): Promise<CoreIdentity> {
@@ -258,6 +277,28 @@ export async function validateCoreConfig(
     config: Record<string, unknown>,
     root: string,
 ) {
+    if (
+        (await new PortPlanStateStore().read())?.required &&
+        !(await readFile(binary)).includes(Buffer.from(PORT_PLAN_CAPABILITY))
+    )
+        throw new Error('The selected core cannot preserve independent port plans');
+    const usageRequired = await lstat('/var/lib/remnanode/usage')
+        .then(() => true)
+        .catch((error: NodeJS.ErrnoException) => {
+            if (error.code === 'ENOENT') return false;
+            throw error;
+        });
+    if (
+        usageRequired &&
+        !(await readFile(binary)).includes(Buffer.from('remnacust-usage-receipts-v1'))
+    )
+        throw new Error(
+            'This node has durable usage receipts; the selected core cannot preserve their accounting',
+        );
+    if (await readRecoveryFence()) {
+        if (!(await readFile(binary)).includes(Buffer.from(QUOTA_RECOVERY_FENCE)))
+            throw new Error('The selected core cannot preserve the recovery pause');
+    }
     const policy = await readFile('/var/lib/remnanode/host-policy.json', 'utf8')
         .then(
             (value) =>
@@ -265,10 +306,71 @@ export async function validateCoreConfig(
                     group?: string;
                     protectedInbounds?: string[];
                     version?: string;
+                    offlineReserves?: string;
+                    quotaRegistrations?: string;
+                    quotaCheckpoint?: { instance: string; sequence: string };
+                    userQuota?: string;
+                    groups?: Record<
+                        string,
+                        { fenceAll?: boolean; fencedOwners?: Record<string, boolean> }
+                    >;
                     hosts?: Record<string, { domainMode?: string; domains?: string[] }>;
                 },
         )
-        .catch(() => null);
+        .catch((error: NodeJS.ErrnoException) => {
+            if (error.code === 'ENOENT') return null;
+            throw new Error('Saved host policy cannot be verified before changing the core');
+        });
+    const userQuotaRequired = await userQuotaRequiredOnDisk();
+    const journal = await readQuotaJournal().catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT' && !policy?.offlineReserves) return null;
+        throw error;
+    });
+    if (journal?.registrationsRequired || policy?.quotaRegistrations) {
+        if (
+            policy?.quotaRegistrations !== QUOTA_REGISTRATION_VERSION ||
+            !(await readFile(binary)).includes(Buffer.from(QUOTA_REGISTRATION_VERSION))
+        )
+            throw new Error('The selected core cannot preserve durable quota registration');
+    }
+    if (journal?.watermarksRequired || policy?.quotaCheckpoint) {
+        const checkpoint = policy?.quotaCheckpoint;
+        if (
+            !journal ||
+            !checkpoint ||
+            checkpoint.instance !== journal.instance ||
+            !/^(0|[1-9][0-9]{0,15})$/.test(checkpoint.sequence) ||
+            BigInt(checkpoint.sequence) > BigInt(journal.sequence) ||
+            BigInt(checkpoint.sequence) < BigInt(journal.checkpoint) ||
+            !(await readFile(binary)).includes(Buffer.from(QUOTA_WATERMARK_VERSION))
+        )
+            throw new Error(
+                'The selected core or journal is behind the acknowledged quota checkpoint',
+            );
+    }
+    if (
+        (usageRequired || userQuotaRequired || policy?.userQuota || policy?.offlineReserves) &&
+        !(await readFile(binary)).includes(Buffer.from('remnacust-unreserved-usage-v1'))
+    )
+        throw new Error('The selected core cannot preserve outside-grant quota accounting');
+    if (userQuotaRequired || policy?.userQuota) {
+        if (policy?.userQuota !== USER_QUOTA_VERSION)
+            throw new Error('Recover the saved user quota policy before changing the core');
+        if (!(await readFile(binary)).includes(Buffer.from(USER_QUOTA_VERSION)))
+            throw new Error('The selected core cannot preserve autonomous user quotas');
+        await run(
+            binary,
+            [
+                'api',
+                'inspect-checkpoint',
+                '--input=/var/lib/remnacust/run/core-state/checkpoint.pb',
+            ],
+            {
+                timeout: 15_000,
+                maxBuffer: 16 * 1024,
+            },
+        );
+    }
     if (
         (policy?.group || policy?.protectedInbounds?.length) &&
         !(await readFile(binary)).includes(
@@ -283,6 +385,23 @@ export async function validateCoreConfig(
             'This node has active host limits; the selected core does not support their enforcement',
         );
     }
+    if (
+        policy?.offlineReserves &&
+        !(await readFile(binary)).includes(Buffer.from('remnacust-quota-reserves-v1'))
+    )
+        throw new Error(
+            'This node has local quota reserves; the selected core cannot enforce them',
+        );
+    if (
+        Object.values(policy?.groups ?? {}).some(
+            (group) =>
+                group?.fenceAll === true || Object.values(group?.fencedOwners ?? {}).includes(true),
+        ) &&
+        !(await readFile(binary)).includes(Buffer.from('remnacust-quota-fences-v1'))
+    )
+        throw new Error(
+            'This node has a pending quota transition; the selected core cannot preserve it',
+        );
     if (
         Object.values(policy?.hosts ?? {}).some(
             (host) => host.domainMode !== 'OFF' && host.domains?.some(isIpDestinationRule),

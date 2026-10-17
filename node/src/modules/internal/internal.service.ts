@@ -7,6 +7,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HashedSet } from '@remnawave/hashed-set';
 
 import { StartXrayCommand } from '@libs/contracts/commands';
+import type { ProfileInput } from '../xray-core/profile-input';
 
 @Injectable()
 export class InternalService {
@@ -17,6 +18,16 @@ export class InternalService {
     private emptyConfigHash: null | string = null;
     private inboundsHashMap: Map<string, HashedSet> = new Map();
     private xtlsConfigInbounds: Set<string> = new Set();
+    private profileBindings: Map<string, string[]> = new Map();
+    private profileInput: ProfileInput | null = null;
+    private configurationReady = false;
+
+    public hasConfiguration(): boolean { return this.configurationReady; }
+    public hasProfileBindings(): boolean { return this.profileInput !== null; }
+
+    public getProfileInput(): ProfileInput | null {
+        return this.profileInput ? structuredClone(this.profileInput) : null;
+    }
 
     constructor() {}
 
@@ -35,8 +46,27 @@ export class InternalService {
     public async extractUsersFromConfig(
         hashes: StartXrayCommand.Request['internals']['hashes'],
         newConfig: Record<string, unknown>,
+        profileBindings: readonly { bindingUuid: string; inboundTag: string }[] = [],
+        profileInput?: ProfileInput,
     ): Promise<void> {
+        const index = new Map<string, string[]>();
+        const seen = new Set<string>();
+        if (profileBindings.length > 512) throw new Error('Too many profile bindings');
+        for (const binding of profileBindings) {
+            if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(binding.bindingUuid) ||
+                typeof binding.inboundTag !== 'string' || !binding.inboundTag ||
+                binding.inboundTag.length > 200 || seen.has(binding.bindingUuid) ||
+                !Array.isArray(newConfig.inbounds) ||
+                !newConfig.inbounds.some(inbound => inbound?.tag === binding.inboundTag))
+                throw new Error('Invalid profile binding index');
+            seen.add(binding.bindingUuid);
+            const matches = index.get(binding.inboundTag) ?? [];
+            matches.push(binding.bindingUuid);
+            index.set(binding.inboundTag, matches);
+        }
         this.cleanup();
+        this.profileBindings = index;
+        this.profileInput = profileInput ? structuredClone(profileInput) : null;
 
         this.emptyConfigHash = hashes.emptyConfig;
         this.xrayConfig = newConfig;
@@ -94,6 +124,7 @@ export class InternalService {
         });
 
         this.logger.log(`User extraction completed in ${result ? result : '0ms'}`);
+        this.configurationReady = true;
     }
 
     public isNeedRestartCore(
@@ -101,7 +132,7 @@ export class InternalService {
     ): boolean {
         const start = performance.now();
         try {
-            if (!this.emptyConfigHash) {
+            if (!this.configurationReady || !this.emptyConfigHash) {
                 return true;
             }
 
@@ -203,6 +234,10 @@ export class InternalService {
         return this.xtlsConfigInbounds;
     }
 
+    public getProfileBindingsForTag(tag: string): readonly string[] {
+        return [...(this.profileBindings.get(tag) ?? [])];
+    }
+
     public hasUserInInbound(inboundTag: string, vlessUuid: string): boolean {
         return this.inboundsHashMap.get(inboundTag)?.has(vlessUuid) ?? false;
     }
@@ -213,9 +248,12 @@ export class InternalService {
 
     public cleanup(): void {
         this.logger.log('Cleaning up internal service.');
+        this.configurationReady = false;
 
         this.inboundsHashMap.clear();
         this.xtlsConfigInbounds.clear();
+        this.profileBindings.clear();
+        this.profileInput = null;
         this.xrayConfig = null;
         this.emptyConfigHash = null;
     }

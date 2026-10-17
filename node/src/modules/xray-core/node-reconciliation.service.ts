@@ -58,6 +58,17 @@ export class NodeReconciliationService implements OnApplicationBootstrap, OnModu
         this.schedule(30000);
     }
 
+    accepts(value?: Enrollment): boolean {
+        if (
+            !value ||
+            !this.enrollment ||
+            value.url !== this.enrollment.url ||
+            value.token !== this.enrollment.token
+        )
+            return true;
+        return BigInt(value.revision) >= BigInt(this.enrollment.revision);
+    }
+
     private schedule(delay: number): void {
         if (this.stopped) return;
         if (this.timer) clearTimeout(this.timer);
