@@ -2,9 +2,9 @@
 
 Агент ноды получает конфигурацию и пользователей от панели, запускает Xray и возвращает статистику. Образ включает наше ядро с квотами хостов, ограничениями скорости и отзывом доступа устройств.
 
-**Версия 1.1.9** · **Основа: Remnawave Node 3.4.2** · [Панель](https://github.com/lottman/Remnacust-panel) · [Ядро](https://github.com/lottman/Remnacust-core)
+**Версия 1.1.10** · **Основа: Remnawave Node 3.4.2** · [Панель](https://github.com/lottman/Remnacust-panel) · [Ядро](https://github.com/lottman/Remnacust-core)
 
-Агент сообщает панели версию `1.1.9-remnacust`; версия Xray передаётся отдельно. Для обычной работы нужны Linux, Docker Engine и Compose v2. Управляющий порт должен быть доступен панели, порты inbound — клиентам.
+Агент сообщает панели версию `1.1.10-remnacust`; версия Xray передаётся отдельно. Для обычной работы нужны Linux, Docker Engine и Compose v2. Управляющий порт должен быть доступен панели, порты inbound — клиентам.
 
 С панелью 1.1.7.22 агент самостоятельно запрашивает актуальную конфигурацию после запуска и восстановления связи. Адрес HTTPS и отдельный токен своей ноды выдаёт панель через аутентифицированный запуск; состояние сохраняется в `/var/lib/remnacust/run/node-reconciliation.json`. Проверка проходит каждые 30–35 секунд и подтверждает только успешно применённую ревизию. Обычная проверка неизменной конфигурации не перезапускает Xray. [Удаление устройств и сверка состояния](https://github.com/lottman/Remnacust-panel/blob/main/docs/DEVICE-RECONCILIATION.md).
 
@@ -18,7 +18,7 @@
 curl -fsSL --proto '=https' --proto-redir '=https' https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh -o installer.sh && sudo bash installer.sh install-node
 ```
 
-[Скачать installer.sh](https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh). Скрипт спросит версию выпуска, API-порт, адрес панели для ограничения доступа и ключ; предложит TLS/XHTTP с выбором сертификата и email ACME; Enter выбирает `latest`. Установщик 1.2.44 содержит панель 1.1.7.22, ноду 1.1.9 и ядро 1.1.5. По умолчанию порт управления — 2222. Пример с явно указанным портом и выпуском:
+[Скачать installer.sh](https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh). Скрипт спросит версию выпуска, API-порт, адрес панели для ограничения доступа и ключ; предложит TLS/XHTTP с выбором сертификата и email ACME; Enter выбирает `latest`. Готовящийся установщик 1.2.58 содержит панель 1.1.7.32, ноду 1.1.10 и ядро 1.1.6. По умолчанию порт управления — 2222. Пример с явно указанным портом и выпуском:
 
 ```bash
 sudo bash installer.sh install-node --port 2222 --version 1.2.25
@@ -40,7 +40,7 @@ sudo bash installer.sh migrate-remnawave-node --container remnanode
 ```bash
 git clone https://github.com/lottman/Remnacust-node.git
 cd Remnacust-node
-docker build -f node/docker/Dockerfile -t remnacust-node:1.1.9 node
+docker build -f node/docker/Dockerfile -t remnacust-node:1.1.10 node
 cp node/.env.sample node/.env
 chmod 600 node/.env
 ```
@@ -74,7 +74,7 @@ Xera HTTP — форк транспорта XHTTP (SplitHTTP) из Xray-core, с
 
 Готовые Docker-образы для amd64 и arm64 собираются в GitHub Actions и входят в выпуск установщика. Скачивание из GHCR и GitHub Release открыто; токен не нужен.
 
-В ноде 1.1.9 используется ядро 1.1.5: отзыв устройства обрывает его активное соединение, не отключая другие устройства с того же IP. Для применения исправления обновите ноду через `upgrade-node`. Порт, ключ подключения, тома и существующий проект Compose сохраняются.
+В ноде 1.1.10 используется ядро 1.1.6: отзыв устройства обрывает его активное соединение, не отключая другие устройства с того же IP. Для применения исправления обновите ноду через `upgrade-node`. Порт, ключ подключения, тома и существующий проект Compose сохраняются.
 
 Управляющий gRPC API Xray доступен агенту через файловый Unix socket в каталоге с правами `0700`; socket имеет права `0600`. Другой локальный пользователь не может обращаться к нему. Обновление ноды сохраняет внешний API-порт и ключ подключения панели.
 
