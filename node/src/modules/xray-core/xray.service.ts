@@ -35,8 +35,9 @@ import { InternalService } from '../internal/internal.service';
 import { GetInterfaceStatsQuery } from '../network-stats/queries/get-interface-stats/get-interface-stats.query';
 import { CoreLoaderService } from './core-loader.service';
 import { coreManagement } from './core-management';
+import { restoreCachedCore } from './core-boot-recovery';
 import { GeodataService } from './geodata.service';
-import { LiveCoreService } from './live-core.service';
+import { LiveCoreService, LIVE_CORE_CHECKPOINT } from './live-core.service';
 import {
     ManagedCoreStore,
     CoreAction,
@@ -112,7 +113,8 @@ export class XrayService implements OnApplicationBootstrap {
     async onApplicationBootstrap() {
         this.isXrayOnline = false;
         try {
-            if ((await this.managedCore.load()).paused) await this.xrayProcess.stop();
+            const paused = (await this.managedCore.load()).paused;
+            if (paused) await this.xrayProcess.stop();
             await this.refreshXrayVersion();
             this.nodeVersion = `${__RWNODE_VERSION__ ?? '0.0.0'}-remnacust`;
 
@@ -120,6 +122,14 @@ export class XrayService implements OnApplicationBootstrap {
                 this.logger.error('s6 xray control socket not found, exiting...');
                 process.exit(1);
             }
+            this.isXrayOnline = await coreManagement.run(() => restoreCachedCore({
+                paused,
+                checkpoint: LIVE_CORE_CHECKPOINT,
+                supported: () => this.liveCore.supported(this.xrayPath),
+                running: async () => (await this.xrayProcess.getStatus()).up,
+                start: () => this.xrayProcess.start(),
+                ready: async () => (await this.getXrayInternalStatus()).isStarted,
+            }));
         } catch (error: unknown) {
             this.logger.error(`Error in Application Bootstrap: ${error}`);
         }

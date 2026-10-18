@@ -1,9 +1,10 @@
 import { lstatSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export function privateXtlsConnectionUrl(socketPath: string): string {
-    if (!/^\/run\/remnacust-xray-[a-zA-Z0-9]{10}\/api\.sock$/.test(socketPath)) {
-        throw new Error('Xray API requires a private filesystem socket');
+function requirePrivateSocket(socketPath: string, filename: 'api.sock' | 'internal.sock'): void {
+    if (!/^\/run\/remnacust-xray-[a-zA-Z0-9]{10}\/(api|internal)\.sock$/.test(socketPath) ||
+        !socketPath.endsWith('/' + filename)) {
+        throw new Error('Node control requires a private filesystem socket');
     }
     const directory = lstatSync(dirname(socketPath));
     if (
@@ -13,5 +14,14 @@ export function privateXtlsConnectionUrl(socketPath: string): string {
     ) {
         throw new Error('Xray API directory must be owned by the service user and private');
     }
+}
+
+export function privateInternalSocketPath(socketPath: string): string {
+    requirePrivateSocket(socketPath, 'internal.sock');
+    return socketPath;
+}
+
+export function privateXtlsConnectionUrl(socketPath: string): string {
+    requirePrivateSocket(socketPath, 'api.sock');
     return `unix://${socketPath}`;
 }

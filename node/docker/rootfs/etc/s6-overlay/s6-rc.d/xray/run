@@ -11,9 +11,9 @@ esac
 if grep -aq 'remnacust-live-ports-v1' /usr/local/bin/rw-core; then
     exec /usr/local/bin/rw-core \
         -runtime-cache /var/lib/remnacust/run/core-state/checkpoint.pb \
-        -config @"${INTERNAL_SOCKET_PATH}":/internal/get-config?token="${INTERNAL_REST_TOKEN}" \
+        -config "${INTERNAL_SOCKET_PATH}":/internal/get-config?token="${INTERNAL_REST_TOKEN}" \
         -format json
 fi
 exec /usr/local/bin/rw-core \
-    -config @"${INTERNAL_SOCKET_PATH}":/internal/get-config?token="${INTERNAL_REST_TOKEN}" \
+    -config "${INTERNAL_SOCKET_PATH}":/internal/get-config?token="${INTERNAL_REST_TOKEN}" \
     -format json

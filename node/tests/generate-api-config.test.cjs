@@ -80,3 +80,16 @@ test('a rules-based blocker cannot silently override or disable Lua routing', ()
     assert.throws(() => generator(false)(request), /Lua routing cannot use the rules-based Torrent Blocker/);
     assert.deepEqual(request.config, { routing: { script: 'route.lua' } });
 });
+
+test('node webhooks use private filesystem sockets and retain legacy abstract address compatibility', () => {
+    for (const socketPath of ['/run/remnacust-xray-AbCd123456/internal.sock', 'legacy-socket']) {
+        const request = args({});
+        request.internal.socketPath = socketPath;
+        request.torrentBlockerState.enabled = true;
+        const generated = generator(false)(request);
+        const hooks = generated.routing.rules.filter(rule => rule.webhook);
+        assert.ok(hooks.length > 0);
+        for (const rule of hooks)
+            assert.equal(rule.webhook.url, (socketPath.startsWith('/') ? '' : '@') + socketPath + ':/fixture?token=fixture');
+    }
+});

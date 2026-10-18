@@ -1,6 +1,5 @@
 const test=require('node:test');const assert=require('node:assert/strict');
-const fs=require('node:fs');const path=require('node:path');const util=require('node:util');const crypto=require('node:crypto');
-const ts=require('typescript');const {createRequire}=require('node:module');
+const path=require('node:path');const util=require('node:util');const crypto=require('node:crypto');
 const root=path.join(__dirname,'../src/modules/xray-core');
 const load=(name,mocks={})=>require('./load-typescript.cjs')(path.join(root,name+'.ts'),mocks);
 const model=load('usage-receipt');

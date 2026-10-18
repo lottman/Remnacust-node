@@ -141,5 +141,6 @@ const resolveRuleIndex = (position: number, rulesLength: number, control: boolea
 };
 
 const buildWebhookUrl = (internal: { socketPath: string; token: string }): string => {
-    return `@${internal.socketPath}:${XRAY_INTERNAL_FULL_WEBHOOK_PATH}?token=${internal.token}`;
+    const socket = internal.socketPath.startsWith('/') ? internal.socketPath : `@${internal.socketPath}`;
+    return `${socket}:${XRAY_INTERNAL_FULL_WEBHOOK_PATH}?token=${internal.token}`;
 };

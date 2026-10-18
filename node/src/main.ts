@@ -8,6 +8,7 @@ import morgan from 'morgan';
 import { utilities as nestWinstonModuleUtilities, WinstonModule } from 'nest-winston';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { createSecureContext, SecureContext, SecureVersion } from 'node:tls';
+import { chmod } from 'node:fs/promises';
 import { createLogger } from 'winston';
 import * as winston from 'winston';
 
@@ -24,6 +25,7 @@ import { customLogFilter } from '@common/utils/filter-logs';
 import { getDuplicateInstanceMessage } from '@common/utils/get-duplicate-instance-message';
 import { getStartMessage } from '@common/utils/get-start-message';
 import { createInternalHttpApp } from '@common/utils/internal-http-app';
+import { privateInternalSocketPath } from '@common/utils/private-xtls-socket';
 import { isDevelopment } from '@common/utils/is-development';
 import { ROOT } from '@libs/contracts/api';
 import {
@@ -53,7 +55,7 @@ const logger = createLogger({
 });
 
 async function bootstrap(): Promise<void> {
-    const internalSocketPath = process.env.INTERNAL_SOCKET_PATH!;
+    const internalSocketPath = privateInternalSocketPath(process.env.INTERNAL_SOCKET_PATH!);
     const sniVerification = process.env.SNI_VERIFICATION === 'true';
 
     const nodePayload = parseNodePayload(logger);
@@ -142,7 +144,12 @@ async function bootstrap(): Promise<void> {
         [XRAY_INTERNAL_FULL_PATH, XRAY_INTERNAL_FULL_WEBHOOK_PATH],
     );
 
-    const internalServer = internalApp.listen('\0' + internalSocketPath);
+    const internalServer = internalApp.listen(internalSocketPath);
+    await new Promise<void>((resolve, reject) => {
+        internalServer.once('listening', resolve);
+        internalServer.once('error', reject);
+    });
+    await chmod(internalSocketPath, 0o600);
 
     let internalServerClosed = false;
 
