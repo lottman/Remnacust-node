@@ -9,8 +9,8 @@ import { getSystemStats } from '@common/utils/get-system-stats';
 import { ERRORS } from '@libs/contracts/constants';
 
 import { GetTorrentBlockerReportsCountQuery } from '../_plugin/queries/get-torrent-blocker-reports-count';
-import { GetInterfaceStatsQuery } from '../network-stats/queries/get-interface-stats/get-interface-stats.query';
 import { InternalService } from '../internal/internal.service';
+import { GetInterfaceStatsQuery } from '../network-stats/queries/get-interface-stats/get-interface-stats.query';
 import { readCoreIncarnation } from '../xray-core/core-incarnation';
 import { readProfileTraffic } from '../xray-core/profile-traffic';
 import { XrayProcessService } from '../xray-core/xray-process.service';
@@ -241,41 +241,39 @@ export class StatsService {
     }
 
     public async getUserIpList(userId: string): Promise<TResult<GetUserIpListResponseModel>> {
-        try {
-            const userIps = await this.xtlsSdk.stats.rawClient.getStatsOnlineIpList({
-                name: `user>>>${userId}>>>online`,
-                reset: true,
-            });
-
-            const ips = Object.entries(userIps.ips).map(([ip, timestamp]) => ({
-                ip,
-                lastSeen: new Date(timestamp * 1000),
-            }));
-
-            return ok(new GetUserIpListResponseModel(ips));
-        } catch (error) {
-            if (error && typeof error === 'object' && 'code' in error && error.code === 5) {
-                return ok(new GetUserIpListResponseModel([]));
+        const response = await this.getUsersIpList();
+        if (!response.isOk) return fail(ERRORS.FAILED_TO_GET_USERS_STATS);
+        const byIp = new Map<string, { ip: string; lastSeen: Date }>();
+        for (const user of response.response.users) {
+            const owner = /^([1-9][0-9]*)(?:~[a-f0-9]{24}(?:~h[a-f0-9]{32})?)?$/.exec(
+                user.userId,
+            )?.[1];
+            if (owner !== userId) continue;
+            for (const ip of user.ips) {
+                const previous = byIp.get(ip.ip);
+                if (
+                    !previous ||
+                    new Date(ip.lastSeen).getTime() > new Date(previous.lastSeen).getTime()
+                )
+                    byIp.set(ip.ip, ip);
             }
-
-            this.logger.error(error);
-            return ok(new GetUserIpListResponseModel([]));
         }
+        return ok(new GetUserIpListResponseModel([...byIp.values()]));
     }
 
     public async getUsersIpList(): Promise<TResult<GetUsersIpListResponseModel>> {
         try {
             const response = await this.xtlsSdk.stats.getUsersStats(false, false);
 
-            if (!response.isOk || !response.data || !response.data.users) {
+            if (!response.isOk || !response.data || !Array.isArray(response.data.users)) {
                 this.logger.error(response);
-                return ok(new GetUsersIpListResponseModel([]));
+                return fail(ERRORS.FAILED_TO_GET_USERS_STATS);
             }
 
             return ok(new GetUsersIpListResponseModel(response.data.users));
         } catch (error) {
             this.logger.error(error);
-            return ok(new GetUsersIpListResponseModel([]));
+            return fail(ERRORS.FAILED_TO_GET_USERS_STATS);
         }
     }
 }

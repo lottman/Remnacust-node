@@ -42,7 +42,7 @@ test('node keeps every configured policy level and enforces accounting on each',
         const result = generator(capability)(args(config));
         for (const level of ['0', '2', '17']) {
             assert.deepEqual(result.policy.levels[level], {
-                ...config.policy.levels[level], statsUserUplink: true, statsUserDownlink: true, statsUserOnline: capability,
+                ...config.policy.levels[level], statsUserUplink: true, statsUserDownlink: true, statsUserOnline: true,
             });
         }
         assert.deepEqual(result.policy.system, constants.XRAY_DEFAULT_POLICY_MODEL.policy.system);
@@ -55,7 +55,7 @@ test('node keeps every configured policy level and enforces accounting on each',
 
 test('profiles with only nonzero levels retain default accounting and their settings', () => {
     const result = generator(false)(args({ policy: { levels: { '5': { connIdle: 71 } } } }));
-    assert.deepEqual(result.policy.levels['0'], { statsUserUplink: true, statsUserDownlink: true, statsUserOnline: false });
+    assert.deepEqual(result.policy.levels['0'], { statsUserUplink: true, statsUserDownlink: true, statsUserOnline: true });
     assert.equal(result.policy.levels['5'].connIdle, 71);
     assert.equal(result.policy.levels['5'].statsUserUplink, true);
     assert.equal(result.policy.levels['5'].statsUserDownlink, true);

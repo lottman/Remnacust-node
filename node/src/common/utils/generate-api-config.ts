@@ -1,5 +1,3 @@
-import { hasCapNetAdmin } from 'sockdestroy';
-
 import { XRAY_INTERNAL_FULL_WEBHOOK_PATH } from '@libs/contracts/constants';
 import {
     XRAY_API_INBOUND_MODEL,
@@ -50,7 +48,6 @@ export const generateApiConfig = (args: IGenerateApiConfigParams): Record<string
         );
 
     const policyConfig = config.policy as undefined | IPolicyConfig;
-    const hasCapNetAdminResult = hasCapNetAdmin();
 
     const builtPolicy: IPolicyConfig = {
         levels: Object.fromEntries(
@@ -61,7 +58,8 @@ export const generateApiConfig = (args: IGenerateApiConfigParams): Record<string
                     statsUserUplink: XRAY_DEFAULT_POLICY_MODEL.policy.levels['0'].statsUserUplink,
                     statsUserDownlink:
                         XRAY_DEFAULT_POLICY_MODEL.policy.levels['0'].statsUserDownlink,
-                    statsUserOnline: hasCapNetAdminResult,
+                    // Reading authenticated session IPs does not require Linux network administration.
+                    statsUserOnline: true,
                 },
             ]),
         ),
@@ -73,10 +71,12 @@ export const generateApiConfig = (args: IGenerateApiConfigParams): Record<string
         ...XRAY_DEFAULT_STATS_MODEL,
         // A direct private API listener does not need to modify Lua routing.
         // Keep the existing tunnel/rule for ordinary profiles and old cores.
-        api: control ? {
-            ...XRAY_DEFAULT_API_MODEL.api,
-            ...(usesRoutingScript ? { listen: `${internal.xtlsApiSocketPath},0600` } : {}),
-        } : config.api,
+        api: control
+            ? {
+                  ...XRAY_DEFAULT_API_MODEL.api,
+                  ...(usesRoutingScript ? { listen: `${internal.xtlsApiSocketPath},0600` } : {}),
+              }
+            : config.api,
         inbounds: [
             ...(!control || usesRoutingScript
                 ? []
@@ -141,6 +141,8 @@ const resolveRuleIndex = (position: number, rulesLength: number, control: boolea
 };
 
 const buildWebhookUrl = (internal: { socketPath: string; token: string }): string => {
-    const socket = internal.socketPath.startsWith('/') ? internal.socketPath : `@${internal.socketPath}`;
+    const socket = internal.socketPath.startsWith('/')
+        ? internal.socketPath
+        : `@${internal.socketPath}`;
     return `${socket}:${XRAY_INTERNAL_FULL_WEBHOOK_PATH}?token=${internal.token}`;
 };
