@@ -21,3 +21,7 @@ bash scripts/test-node-startup.sh remnacust-node:local-check
 Исходники ядра включены в проверяемый архив `node/docker/remnacust-core.tar.gz`. Если меняете ядро, клонируйте рядом [Remnacust-core](https://github.com/lottman/Remnacust-core), внесите изменения и из корня ноды выполните `python3 node/docker/package-remnacust-core.py`. Добавьте обновлённый архив и его SHA-256 в тот же коммит, затем пересоберите образ.
 
 [Выпуск компонентов](https://github.com/lottman/Remnacust-installer/blob/main/docs/PUBLISHING.md).
+
+## Нода 1.1.13
+
+Встроенное ядро 1.1.8 отделяет предупреждения CLI от JSON-ответов. Профили с предупреждением об устаревшем freedom.domainStrategy больше не срывают применение из-за ошибки разбора JSON. Для установленной ноды обновите образ, а не только панель. Клиентские протоколы и права контейнера этим исправлением не меняются.
