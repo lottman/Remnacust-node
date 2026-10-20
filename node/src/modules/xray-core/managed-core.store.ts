@@ -254,14 +254,19 @@ export class ManagedCoreStore {
 
 export function validateCoreRelease(release: CoreRelease) {
     const url = new URL(release.url);
-    const hosts = (process.env.REMNACUST_CORE_ALLOWED_HOSTS ?? '').split(',').map((s) => s.trim());
+    const configuredHosts = process.env.REMNACUST_CORE_ALLOWED_HOSTS;
+    const hosts = (configuredHosts ?? '').split(',').map((s) => s.trim());
+    const permitted =
+        configuredHosts === undefined
+            ? isPublishedCoreRelease(release)
+            : hosts.includes(url.hostname);
     if (
         url.protocol !== 'https:' ||
         url.username ||
         url.password ||
         url.hash ||
         (url.port && url.port !== '443') ||
-        !hosts.includes(url.hostname)
+        !permitted
     ) {
         throw new Error('Core download host is not permitted');
     }
@@ -270,6 +275,57 @@ export function validateCoreRelease(release: CoreRelease) {
     const architecture = process.arch === 'x64' ? 'amd64' : process.arch;
     if (release.arch !== architecture)
         throw new Error('Core architecture does not match this node');
+}
+
+export function isPublishedCoreRelease(release: CoreRelease): boolean {
+    const url = new URL(release.url);
+    return (
+        /^\d+\.\d+\.\d+$/.test(release.build) &&
+        ['amd64', 'arm64'].includes(release.arch) &&
+        url.protocol === 'https:' &&
+        url.hostname === 'github.com' &&
+        !url.username &&
+        !url.password &&
+        !url.search &&
+        !url.hash &&
+        (!url.port || url.port === '443') &&
+        url.pathname ===
+            `/lottman/Remnacust-core/releases/download/v${release.build}/remnacust-core-${release.build}-linux-${release.arch}`
+    );
+}
+
+/** Only the fixed public repository may redirect to GitHub's asset storage.
+ * Custom owner URLs keep their existing no-redirect behavior. */
+export async function resolveCoreDownloadUrl(
+    release: CoreRelease,
+    request: typeof fetch = fetch,
+): Promise<string> {
+    if (!isPublishedCoreRelease(release)) return release.url;
+    const response = await request(release.url, {
+        redirect: 'manual',
+        signal: AbortSignal.timeout(15_000),
+    });
+    try {
+        if (response.status === 200) return release.url;
+        if (![302, 303, 307, 308].includes(response.status))
+            throw new Error(`Core release download returned HTTP ${response.status}`);
+        const location = response.headers.get('location');
+        if (!location) throw new Error('Core release download redirect is missing');
+        const target = new URL(location);
+        if (
+            target.protocol !== 'https:' ||
+            target.hostname !== 'release-assets.githubusercontent.com' ||
+            target.username ||
+            target.password ||
+            target.hash ||
+            (target.port && target.port !== '443') ||
+            !target.pathname.startsWith('/github-production-release-asset/')
+        )
+            throw new Error('Core release download redirect is not permitted');
+        return target.href;
+    } finally {
+        await response.body?.cancel();
+    }
 }
 
 export async function validateCoreConfig(

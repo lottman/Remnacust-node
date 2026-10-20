@@ -33,9 +33,9 @@ import { RunPreStartCommand } from '../_plugin/commands/run-pre-start/run-pre-st
 import { GetTorrentBlockerStateQuery } from '../_plugin/queries/get-torrent-blocker-state';
 import { InternalService } from '../internal/internal.service';
 import { GetInterfaceStatsQuery } from '../network-stats/queries/get-interface-stats/get-interface-stats.query';
+import { restoreCachedCore } from './core-boot-recovery';
 import { CoreLoaderService } from './core-loader.service';
 import { coreManagement } from './core-management';
-import { restoreCachedCore } from './core-boot-recovery';
 import { GeodataService } from './geodata.service';
 import { LiveCoreService, LIVE_CORE_CHECKPOINT } from './live-core.service';
 import {
@@ -45,6 +45,7 @@ import {
     CoreSelection,
     validateCoreConfig,
     validateCoreRelease,
+    resolveCoreDownloadUrl,
 } from './managed-core.store';
 import {
     GetNodeHealthCheckResponseModel,
@@ -122,14 +123,16 @@ export class XrayService implements OnApplicationBootstrap {
                 this.logger.error('s6 xray control socket not found, exiting...');
                 process.exit(1);
             }
-            this.isXrayOnline = await coreManagement.run(() => restoreCachedCore({
-                paused,
-                checkpoint: LIVE_CORE_CHECKPOINT,
-                supported: () => this.liveCore.supported(this.xrayPath),
-                running: async () => (await this.xrayProcess.getStatus()).up,
-                start: () => this.xrayProcess.start(),
-                ready: async () => (await this.getXrayInternalStatus()).isStarted,
-            }));
+            this.isXrayOnline = await coreManagement.run(() =>
+                restoreCachedCore({
+                    paused,
+                    checkpoint: LIVE_CORE_CHECKPOINT,
+                    supported: () => this.liveCore.supported(this.xrayPath),
+                    running: async () => (await this.xrayProcess.getStatus()).up,
+                    start: () => this.xrayProcess.start(),
+                    ready: async () => (await this.getXrayInternalStatus()).isStarted,
+                }),
+            );
         } catch (error: unknown) {
             this.logger.error(`Error in Application Bootstrap: ${error}`);
         }
@@ -176,10 +179,15 @@ export class XrayService implements OnApplicationBootstrap {
         const rawProfileGraphs = body.xrayConfig.remnacustProfileGraphs;
 
         try {
-            if (rawProfileGraphs !== undefined &&
-                (!portPlan?.enabled || !portPlan.delivery ||
-                    !(await this.liveCore.profilesSupported(this.xrayPath))))
-                throw new Error('This profile graph delivery requires a versioned port plan and a compatible core');
+            if (
+                rawProfileGraphs !== undefined &&
+                (!portPlan?.enabled ||
+                    !portPlan.delivery ||
+                    !(await this.liveCore.profilesSupported(this.xrayPath)))
+            )
+                throw new Error(
+                    'This profile graph delivery requires a versioned port plan and a compatible core',
+                );
             const savedPortPlan = await this.portPlans.read();
             const inputsHash = portPlan?.delivery
                 ? portPlanInputsHash(
@@ -292,37 +300,53 @@ export class XrayService implements OnApplicationBootstrap {
                 torrentBlockerState: tblockerState,
                 internal: this.internal,
             });
-            const profileInput = rawProfileGraphs !== undefined
-                ? makeProfileInput(fullConfig, rawProfileGraphs, portPlan!, inputsHash!)
-                : undefined;
+            const profileInput =
+                rawProfileGraphs !== undefined
+                    ? makeProfileInput(fullConfig, rawProfileGraphs, portPlan!, inputsHash!)
+                    : undefined;
             if (profileInput) {
                 const tags = new Map<string, string>();
-                const geodata = new Set(profileInput.graphs.map(graph => portPlanInputsHash(graph.config.geodata)));
+                const geodata = new Set(
+                    profileInput.graphs.map((graph) => portPlanInputsHash(graph.config.geodata)),
+                );
                 if (geodata.size > 1)
-                    throw new Error('Profiles on one node must select the same core and geodata release');
+                    throw new Error(
+                        'Profiles on one node must select the same core and geodata release',
+                    );
                 for (const graph of profileInput.graphs) {
                     const tag = (graph.config.inbounds as { tag: string }[])[0].tag;
                     const owner = `${graph.configProfileUuid}:${graph.configProfileInboundUuid}`;
                     if (tags.has(tag) && tags.get(tag) !== owner)
-                        throw new Error('User reconciliation requires distinct inbound tags across different source inbounds');
+                        throw new Error(
+                            'User reconciliation requires distinct inbound tags across different source inbounds',
+                        );
                     tags.set(tag, owner);
                 }
                 for (const graph of profileInput.graphs)
                     graph.config = generateApiConfig({
-                        config: graph.config, torrentBlockerState: tblockerState,
-                        internal: this.internal, control: false,
+                        config: graph.config,
+                        torrentBlockerState: tblockerState,
+                        internal: this.internal,
+                        control: false,
                     });
             }
-            const rememberConfiguration = () => this.internalService.extractUsersFromConfig(
-                body.internals.hashes,
-                profileInput ? { ...fullConfig, inbounds: profileInput.graphs.flatMap(graph =>
-                    Array.isArray(graph.config.inbounds) ? graph.config.inbounds : []) } : fullConfig,
-                profileInput?.graphs.map(graph => ({
-                    bindingUuid: graph.bindingUuid,
-                    inboundTag: (graph.config.inbounds as { tag: string }[])[0].tag,
-                })),
-                profileInput,
-            );
+            const rememberConfiguration = () =>
+                this.internalService.extractUsersFromConfig(
+                    body.internals.hashes,
+                    profileInput
+                        ? {
+                              ...fullConfig,
+                              inbounds: profileInput.graphs.flatMap((graph) =>
+                                  Array.isArray(graph.config.inbounds) ? graph.config.inbounds : [],
+                              ),
+                          }
+                        : fullConfig,
+                    profileInput?.graphs.map((graph) => ({
+                        bindingUuid: graph.bindingUuid,
+                        inboundTag: (graph.config.inbounds as { tag: string }[])[0].tag,
+                    })),
+                    profileInput,
+                );
 
             if ((await this.managedCore.load()).paused) {
                 return ok(
@@ -354,16 +378,25 @@ export class XrayService implements OnApplicationBootstrap {
                 let replay = false;
                 if (profileInput) {
                     const acknowledgement = await this.liveCore.applyProfiles(
-                        this.xrayPath, this.internal.xtlsApiSocketPath, profileInput,
+                        this.xrayPath,
+                        this.internal.xtlsApiSocketPath,
+                        profileInput,
                     );
                     replay = acknowledgement.unchanged;
-                    if (replay && (!this.internalService.hasProfileBindings() || !this.internalService.hasConfiguration()))
-                        throw new Error('The core retained a replayed delivery; request a fresh panel delivery to rebuild node user state');
-                } else await this.liveCore.apply(
-                    this.xrayPath,
-                    this.internal.xtlsApiSocketPath,
-                    fullConfig,
-                );
+                    if (
+                        replay &&
+                        (!this.internalService.hasProfileBindings() ||
+                            !this.internalService.hasConfiguration())
+                    )
+                        throw new Error(
+                            'The core retained a replayed delivery; request a fresh panel delivery to rebuild node user state',
+                        );
+                } else
+                    await this.liveCore.apply(
+                        this.xrayPath,
+                        this.internal.xtlsApiSocketPath,
+                        fullConfig,
+                    );
                 // Replay preserves subsequent native user mutations. Replacing
                 // the index from an old source would resurrect stale membership.
                 if (!replay) await rememberConfiguration();
@@ -383,7 +416,8 @@ export class XrayService implements OnApplicationBootstrap {
 
             if (liveSupported) {
                 await validateCoreConfig(this.xrayPath, fullConfig, this.managedCore.root);
-                if (profileInput) await this.liveCore.prepareProfileRestart(this.xrayPath, profileInput);
+                if (profileInput)
+                    await this.liveCore.prepareProfileRestart(this.xrayPath, profileInput);
                 else await this.liveCore.prepareRestart(this.xrayPath, fullConfig);
             }
             if (!profileInput) await rememberConfiguration();
@@ -611,7 +645,8 @@ export class XrayService implements OnApplicationBootstrap {
             } else {
                 if (request.action === 'install' && request.release) {
                     await this.managedCore.phase('downloading');
-                    await downloadFile(request.release.url, temporary, {
+                    const downloadUrl = await resolveCoreDownloadUrl(request.release);
+                    await downloadFile(downloadUrl, temporary, {
                         expectedSha256: request.release.sha256,
                         allowRedirects: false,
                         maxSize: 128 * 1024 * 1024,
@@ -664,7 +699,9 @@ export class XrayService implements OnApplicationBootstrap {
                     selection = { mode: 'profile', paused: before.paused };
                     switched = true;
                     await this.managedCore.select(selection);
-                    await this.coreLoaderService.prepare(profileInput?.graphs[0]?.config.geodata ?? config.geodata);
+                    await this.coreLoaderService.prepare(
+                        profileInput?.graphs[0]?.config.geodata ?? config.geodata,
+                    );
                 }
                 await this.managedCore.phase('validating');
                 const binary = selection.binary?.path ?? this.managedCore.link;
@@ -681,7 +718,8 @@ export class XrayService implements OnApplicationBootstrap {
                     await this.managedCore.phase('switching');
                     await this.managedCore.select(selection);
                     if (!selection.paused) {
-                        if (profileInput) await this.liveCore.prepareProfileRestart(binary, profileInput);
+                        if (profileInput)
+                            await this.liveCore.prepareProfileRestart(binary, profileInput);
                         await this.startManagedCore();
                     }
                 }
