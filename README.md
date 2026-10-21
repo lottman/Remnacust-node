@@ -18,10 +18,10 @@
 curl -fsSL --proto '=https' --proto-redir '=https' https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh -o installer.sh && sudo bash installer.sh install-node
 ```
 
-[Скачать installer.sh](https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh). Скрипт спросит версию выпуска, API-порт, адрес панели для ограничения доступа и ключ; предложит TLS/XHTTP с выбором сертификата и email ACME; Enter выбирает `latest`. Опубликованный установщик 1.2.71 содержит панель 1.1.7.40, ноду 1.1.15 и ядро 1.1.9. По умолчанию порт управления — 2222. Пример с явно указанным портом и выпуском:
+[Скачать installer.sh](https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh). Скрипт спросит версию выпуска, API-порт, адрес панели для ограничения доступа и ключ; предложит TLS/XHTTP с выбором сертификата и email ACME; Enter выбирает `latest`. Опубликованный установщик 1.2.72 содержит панель 1.1.7.41, ноду 1.1.15 и ядро 1.1.9. По умолчанию порт управления — 2222. Пример с явно указанным портом и выпуском:
 
 ```bash
-sudo bash installer.sh install-node --port 2222 --version 1.2.71
+sudo bash installer.sh install-node --port 2222 --version 1.2.72
 ```
 
 Укажите тот же порт в карточке ноды. Ключ вводится скрыто; отдельный токен для скачивания не нужен. После запуска назначьте профиль и включите inbound, разрешите его во внутреннем скваде, создайте хост и проверьте подключение тестового пользователя.
