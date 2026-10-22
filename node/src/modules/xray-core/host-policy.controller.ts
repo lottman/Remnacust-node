@@ -67,6 +67,7 @@ import {
 import { XrayProcessService } from './xray-process.service';
 
 const VERSION = 'xera-host-policy-v2';
+const DEVICE_SPEED_LIMITS = 'remnacust-device-speed-v1';
 const DIRECTORY = '/var/lib/remnanode';
 const FILE = `${DIRECTORY}/host-policy.json`;
 const QUOTA_FENCES = 'remnacust-quota-fences-v1';
@@ -124,6 +125,7 @@ const group = z
             .union([z.literal(0), z.literal(100), z.literal(USER_QUOTA_SCALE)])
             .optional(),
         bytesPerSecond: z.int().min(0).max(1_250_000_000),
+        deviceBytesPerSecond: z.int().min(0).max(1_250_000_000).optional(),
         totalBytesPerSecond: z.int().min(0).max(1_250_000_000),
         blockedOwners: z.record(owner, z.boolean()),
         blockAll: z.boolean(),
@@ -414,6 +416,7 @@ export class HostPolicyController {
         key: '',
         supported: false,
         destinationRulesSupported: false,
+        deviceSpeedLimitsSupported: false,
         quotaReservesSupported: false,
         quotaRegistrationsSupported: false,
         quotaWatermarksSupported: false,
@@ -445,6 +448,7 @@ export class HostPolicyController {
                 this.versionCache = {
                     key,
                     supported: binary.includes(Buffer.from(VERSION)),
+                    deviceSpeedLimitsSupported: binary.includes(Buffer.from(DEVICE_SPEED_LIMITS)),
                     destinationRulesSupported: binary.includes(
                         Buffer.from('xera-destination-rules-v1'),
                     ),
@@ -517,6 +521,8 @@ export class HostPolicyController {
             response: {
                 supported,
                 destinationRulesSupported: supported && this.versionCache.destinationRulesSupported,
+                deviceSpeedLimitsSupported:
+                    supported && this.versionCache.deviceSpeedLimitsSupported,
                 quotaReservesSupported: supported && this.versionCache.quotaReservesSupported,
                 quotaRegistrationsSupported:
                     supported && this.versionCache.quotaRegistrationsSupported,
@@ -1017,6 +1023,15 @@ export class HostPolicyController {
         if (parsed.data.userQuota && !this.versionCache.userQuotaReservesSupported)
             throw new ServiceUnavailableException(
                 'Update Xray Core: autonomous user quotas are not supported',
+            );
+        if (
+            Object.values(parsed.data.groups).some(
+                (group) => (group.deviceBytesPerSecond ?? 0) > 0,
+            ) &&
+            !this.versionCache.deviceSpeedLimitsSupported
+        )
+            throw new ServiceUnavailableException(
+                'Update Xray Core: authenticated device speed limits are not supported',
             );
         const needsDestinationRules = Object.values(parsed.data.hosts).some(
             (host) => host.domainMode !== 'OFF' && host.domains.some(isIpDestinationRule),

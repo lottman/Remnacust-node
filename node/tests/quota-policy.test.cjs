@@ -316,3 +316,21 @@ test('node status retains the recovery binding requirement while stopped or when
  state.recoveryError=true;assert.equal((await controller.status()).response.quotaRecoveryPolicyBindingsRequired,true);
  const before=structuredClone(state.calls);await assert.rejects(controller.update(policy()),/requires reconciliation/);assert.deepEqual(state.calls,before);
 });
+
+
+test('device speed schema is bounded and a legacy core cannot publish the new limit', async()=>{
+    const {schema,controller,state}=fixture();const value=policy(false);
+    const key=Object.keys(value.groups)[0];
+    for(const cap of [-1,0.5,1250000001,'100']) {
+        value.groups[key].deviceBytesPerSecond=cap;
+        assert.equal(schema.safeParse(value).success,false);
+    }
+    value.groups[key].deviceBytesPerSecond=250000;
+    assert.equal(schema.safeParse(value).success,true);
+    await assert.rejects(controller.update(value),/device speed limits are not supported/);
+    assert(!state.calls.some(call=>call[0]==='write'));
+    controller.versionCache.deviceSpeedLimitsSupported=true;
+    await controller.update(value);
+    const saved=state.calls.find(call=>call[0]==='write');
+    assert.equal(JSON.parse(saved[1]).groups[key].deviceBytesPerSecond,250000);
+});
