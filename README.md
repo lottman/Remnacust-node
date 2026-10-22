@@ -2,7 +2,7 @@
 
 Агент ноды получает конфигурацию и пользователей от панели, запускает Xray и возвращает статистику. Образ включает наше ядро с квотами хостов, ограничениями скорости и отзывом доступа устройств.
 
-**Версия 1.1.16** · **Основа: Remnawave Node 3.4.2** · [Панель](https://github.com/lottman/Remnacust-panel) · [Ядро](https://github.com/lottman/Remnacust-core)
+**Версия 1.1.17** · **Основа: Remnawave Node 3.4.3** · [Панель](https://github.com/lottman/Remnacust-panel) · [Ядро](https://github.com/lottman/Remnacust-core)
 
 Агент сообщает панели версию `1.1.16-remnacust`; версия Xray передаётся отдельно. Для обычной работы нужны Linux, Docker Engine и Compose v2. Управляющий порт должен быть доступен панели, порты inbound — клиентам.
 

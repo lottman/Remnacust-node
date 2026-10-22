@@ -1,6 +1,6 @@
 # BuildKit is required for cache mounts.
 
-FROM node:24.21-trixie-slim AS build
+FROM node:24.22.1-trixie-slim AS build
 
 WORKDIR /opt/app
 
@@ -95,7 +95,7 @@ FROM scratch AS integration-bin
 FROM alpine:3.21 AS certificates
 RUN apk add --no-cache ca-certificates
 
-FROM node:24.21-trixie-slim
+FROM node:24.22.1-trixie-slim
 COPY --from=certificates /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 ARG S6_OVERLAY_VERSION=3.2.3.2
