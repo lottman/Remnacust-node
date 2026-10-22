@@ -4,7 +4,7 @@
 
 **Версия 1.1.17** · **Основа: Remnawave Node 3.4.3** · [Панель](https://github.com/lottman/Remnacust-panel) · [Ядро](https://github.com/lottman/Remnacust-core)
 
-Агент сообщает панели версию `1.1.16-remnacust`; версия Xray передаётся отдельно. Для обычной работы нужны Linux, Docker Engine и Compose v2. Управляющий порт должен быть доступен панели, порты inbound — клиентам.
+Агент сообщает панели версию `1.1.17-remnacust`; версия Xray передаётся отдельно. Для обычной работы нужны Linux, Docker Engine и Compose v2. Управляющий порт должен быть доступен панели, порты inbound — клиентам.
 
 С панелью 1.1.7.22 агент самостоятельно запрашивает актуальную конфигурацию после запуска и восстановления связи. Адрес HTTPS и отдельный токен своей ноды выдаёт панель через аутентифицированный запуск; состояние сохраняется в `/var/lib/remnacust/run/node-reconciliation.json`. Проверка проходит каждые 30–35 секунд и подтверждает только успешно применённую ревизию. Обычная проверка неизменной конфигурации не перезапускает Xray. [Удаление устройств и сверка состояния](https://github.com/lottman/Remnacust-panel/blob/main/docs/DEVICE-RECONCILIATION.md).
 
@@ -18,10 +18,10 @@
 curl -fsSL --proto '=https' --proto-redir '=https' https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh -o installer.sh && sudo bash installer.sh install-node
 ```
 
-[Скачать installer.sh](https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh). Скрипт спросит версию выпуска, API-порт, адрес панели для ограничения доступа и ключ; предложит TLS/XHTTP с выбором сертификата и email ACME; Enter выбирает `latest`. Комплект 1.2.73 содержит панель 1.1.7.42, ноду 1.1.16 и ядро 1.1.11. По умолчанию порт управления — 2222. Пример с явно указанным портом и выпуском:
+[Скачать installer.sh](https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh). Скрипт спросит версию выпуска, API-порт, адрес панели для ограничения доступа и ключ; предложит TLS/XHTTP с выбором сертификата и email ACME; Enter выбирает `latest`. Комплект 1.2.74 содержит панель 1.1.7.43, ноду 1.1.17 и ядро 1.1.11. По умолчанию порт управления — 2222. Пример с явно указанным портом и выпуском:
 
 ```bash
-sudo bash installer.sh install-node --port 2222 --version 1.2.73
+sudo bash installer.sh install-node --port 2222 --version 1.2.74
 ```
 
 Укажите тот же порт в карточке ноды. Ключ вводится скрыто; отдельный токен для скачивания не нужен. После запуска назначьте профиль и включите inbound, разрешите его во внутреннем скваде, создайте хост и проверьте подключение тестового пользователя.
@@ -40,7 +40,7 @@ sudo bash installer.sh migrate-remnawave-node --container remnanode
 ```bash
 git clone https://github.com/lottman/Remnacust-node.git
 cd Remnacust-node
-docker build -f node/docker/Dockerfile -t remnacust-node:1.1.16 node
+docker build -f node/docker/Dockerfile -t remnacust-node:1.1.17 node
 cp node/.env.sample node/.env
 chmod 600 node/.env
 ```
@@ -116,3 +116,7 @@ Xera HTTP — форк транспорта XHTTP (SplitHTTP) из Xray-core, с
 ## Выпуск 1.2.73 — 22 октября 2026
 
 [Комплект 1.2.73](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.73) опубликован: панель 1.1.7.42, Node 1.1.16, Core/WASM 1.1.11 на официальном Xray v26.10.21 и Go 1.27.3. [Сборка](https://github.com/lottman/Remnacust-installer/actions/runs/39726734748) и проверки исходников прошли. Проверены шесть нативных Docker-образов, контрольные суммы и публичное скачивание. Новый предел приватного ключа устройства требует совместимых панели, агента и активного ядра; копии ключа считаются одной идентичностью. Старый XDRIVE без VLESS encryption/decryption требует согласованной настройки по заметкам выпуска.
+
+## Выпуск 1.2.74 — официальное обновление
+
+[Комплект 1.2.74](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.74) опубликован: панель/страница подписки 1.1.7.43, Node 1.1.17, Core/WASM 1.1.11. Основа агента обновлена до официального выпущенного Node 3.4.3, Node.js в образах — до 24.22.1. Ядро, автономные квоты, лимиты и ключи устройств сохранены. [Проверки агента](https://github.com/lottman/Remnacust-node/actions/runs/39790563087) и [сборка шести образов](https://github.com/lottman/Remnacust-installer/actions/runs/39792039649) прошли; проверены контрольные суммы и публичное скачивание. Исторические сведения о 1.2.73 выше остаются описанием того выпуска.
