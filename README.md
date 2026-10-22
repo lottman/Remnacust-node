@@ -18,7 +18,7 @@
 curl -fsSL --proto '=https' --proto-redir '=https' https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh -o installer.sh && sudo bash installer.sh install-node
 ```
 
-[Скачать installer.sh](https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh). Скрипт спросит версию выпуска, API-порт, адрес панели для ограничения доступа и ключ; предложит TLS/XHTTP с выбором сертификата и email ACME; Enter выбирает `latest`. Опубликованный установщик 1.2.72 содержит панель 1.1.7.41, ноду 1.1.15 и ядро 1.1.9. По умолчанию порт управления — 2222. Пример с явно указанным портом и выпуском:
+[Скачать installer.sh](https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh). Скрипт спросит версию выпуска, API-порт, адрес панели для ограничения доступа и ключ; предложит TLS/XHTTP с выбором сертификата и email ACME; Enter выбирает `latest`. Комплект 1.2.73 содержит панель 1.1.7.42, ноду 1.1.16 и ядро 1.1.11. По умолчанию порт управления — 2222. Пример с явно указанным портом и выпуском:
 
 ```bash
 sudo bash installer.sh install-node --port 2222 --version 1.2.72
@@ -40,7 +40,7 @@ sudo bash installer.sh migrate-remnawave-node --container remnanode
 ```bash
 git clone https://github.com/lottman/Remnacust-node.git
 cd Remnacust-node
-docker build -f node/docker/Dockerfile -t remnacust-node:1.1.10 node
+docker build -f node/docker/Dockerfile -t remnacust-node:1.1.11 node
 cp node/.env.sample node/.env
 chmod 600 node/.env
 ```
@@ -74,7 +74,7 @@ Xera HTTP — форк транспорта XHTTP (SplitHTTP) из Xray-core, с
 
 Готовые Docker-образы для amd64 и arm64 собираются в GitHub Actions и входят в выпуск установщика. Скачивание из GHCR и GitHub Release открыто; токен не нужен.
 
-В ноде 1.1.10 используется ядро 1.1.6: отзыв устройства обрывает его активное соединение, не отключая другие устройства с того же IP. Для применения исправления обновите ноду через `upgrade-node`. Порт, ключ подключения, тома и существующий проект Compose сохраняются.
+В ноде 1.1.11 используется ядро 1.1.6: отзыв устройства обрывает его активное соединение, не отключая другие устройства с того же IP. Для применения исправления обновите ноду через `upgrade-node`. Порт, ключ подключения, тома и существующий проект Compose сохраняются.
 
 Управляющий gRPC API Xray и внутренний HTTP-канал конфигурации/webhook используют отдельные файловые Unix sockets в каталоге с правами `0700`; оба socket имеют права `0600`. Внутренний HTTP больше не использует общедоступный локальным процессам abstract namespace. Одного знания адреса и служебного токена недостаточно для подключения другого локального пользователя. Обновление ноды сохраняет внешний API-порт и ключ подключения панели.
 

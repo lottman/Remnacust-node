@@ -18,10 +18,10 @@ RUN npm run build \
     && chmod +x dist/cli.js
 
 
-FROM golang:1.27.2-alpine AS xray-device-build
+FROM golang:1.27.3-alpine AS xray-device-build
 
-ARG XRAY_CORE_VERSION=v26.10.10
-ARG XRAY_CORE_COMMIT=701af60772cda123492f86e383e1fdba066614a9
+ARG XRAY_CORE_VERSION=v26.10.21
+ARG XRAY_CORE_COMMIT=1b1647cd9ddf0abc34b981d4611fc03bcac1ca74
 RUN apk add --no-cache git
 COPY docker/remnacust-core.tar.gz docker/remnacust-core.tar.gz.sha256 /tmp/
 RUN cd /tmp && sha256sum -c remnacust-core.tar.gz.sha256 \
@@ -38,7 +38,7 @@ RUN go test ./infra/conf ./transport/internet/xerahttp ./app/dispatcher ./app/pr
 
 FROM alpine:3.21 AS xray
 
-ARG XRAY_CORE_VERSION=v26.10.10
+ARG XRAY_CORE_VERSION=v26.10.21
 ARG UPSTREAM_REPO=XTLS
 ARG TARGETARCH
 
@@ -75,7 +75,7 @@ RUN mkdir -p /usr/local/share/asn \
     && rm -f /tmp/asn-prefixes.lmdb.zst
 
 
-FROM golang:1.27.2-alpine AS geocheck
+FROM golang:1.27.3-alpine AS geocheck
 ARG GEOCHECK_VERSION=0.3.0
 ARG GEOCHECK_COMMIT=50e084bb3ed34b55fc6839fe0dc4bafd9fe275fc
 RUN apk add --no-cache git
