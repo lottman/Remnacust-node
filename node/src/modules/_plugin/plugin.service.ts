@@ -53,7 +53,7 @@ export class PluginService {
 
             if (!plugin) {
                 if (!this.state.hasActivePlugin()) {
-                    return ok(new GenericResponseModel(liveDelivery));
+                    return ok(new GenericResponseModel(true));
                 }
 
                 this.logger.log(
@@ -73,14 +73,6 @@ export class PluginService {
                 return ok(new GenericResponseModel(true));
             }
 
-            const configHash = this.hashFn(plugin.config);
-
-            if (!this.state.isConfigChanged(configHash)) {
-                this.state.setPluginConfigDetails(plugin.uuid, plugin.name);
-                this.logger.debug('[PLUGIN] Config unchanged. Skipping sync.');
-                return ok(new GenericResponseModel(true));
-            }
-
             const parsed = await NodePluginSchema.safeParseAsync(plugin.config);
 
             if (!parsed.success) {
@@ -94,6 +86,43 @@ export class PluginService {
                     }),
                 );
                 return ok(new GenericResponseModel(false));
+            }
+
+            // Reject unsupported protection before clearing the previous working configuration.
+            const requested = parsed.data;
+            const unavailable = (
+                [
+                    'connectionDrop',
+                    'ingressFilter',
+                    'egressFilter',
+                    'torrentBlocker',
+                    'preStart',
+                    'postStart',
+                ] as const
+            ).filter((feature) => requested[feature]?.enabled && !this.state.plugins[feature]);
+            if (
+                !this.nftService.isAvailable &&
+                (['ingressFilter', 'egressFilter', 'torrentBlocker'] as const).some(
+                    (feature) => requested[feature]?.enabled,
+                )
+            ) {
+                this.logger.warn(
+                    '[PLUGIN] Enabled network protection requires available nftables/NET_ADMIN',
+                );
+                return ok(new GenericResponseModel(false));
+            }
+            if (unavailable.length) {
+                this.logger.warn(
+                    `[PLUGIN] Requested capabilities are unavailable: ${unavailable.join(', ')}`,
+                );
+                return ok(new GenericResponseModel(false));
+            }
+
+            const configHash = this.hashFn(plugin.config);
+            if (!this.state.isConfigChanged(configHash)) {
+                this.state.setPluginConfigDetails(plugin.uuid, plugin.name);
+                this.logger.debug('[PLUGIN] Config unchanged. Skipping sync.');
+                return ok(new GenericResponseModel(true));
             }
 
             const currentTorrentBlocker = this.state.torrentBlocker.isEnabled;

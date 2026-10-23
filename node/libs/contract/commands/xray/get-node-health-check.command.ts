@@ -11,6 +11,7 @@ export namespace GetNodeHealthCheckCommand {
             xrayInternalStatusCached: z.boolean(),
             xrayVersion: z.string().nullable(),
             nodeVersion: z.string(),
+            pluginSyncAckSupported: z.boolean().optional(),
             nativePortPlansSupported: z.boolean().optional(),
             profileGraphDeliverySupported: z.boolean().optional(),
             portPlanStateSupported: z.boolean().optional(),

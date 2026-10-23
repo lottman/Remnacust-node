@@ -3,6 +3,7 @@ export class GetNodeHealthCheckResponseModel {
     public xrayInternalStatusCached: boolean;
     public xrayVersion: null | string;
     public nodeVersion: string;
+    public readonly pluginSyncAckSupported = true;
     public nativePortPlansSupported: boolean;
     public portPlanStateSupported = true;
     public portPlanDeliverySupported = true;

@@ -1,6 +1,8 @@
 import { DEFAULT_IGNORED_IPS } from '@common/constants';
 import { TorrentBlockerReportModel } from '@libs/contracts/models';
 
+import { userIdentityOwner } from '../../../../common/utils/user-identity';
+
 export class TorrentBlockerState {
     private enabled = false;
     private blockDuration: number | null = null;
@@ -46,7 +48,8 @@ export class TorrentBlockerState {
     }
 
     isUserIgnored(userId: string): boolean {
-        return this.ignoredUsers.has(userId);
+        const owner = userIdentityOwner(userId);
+        return this.ignoredUsers.has(userId) || (owner !== null && this.ignoredUsers.has(owner));
     }
 
     addReport(report: TorrentBlockerReportModel): void {

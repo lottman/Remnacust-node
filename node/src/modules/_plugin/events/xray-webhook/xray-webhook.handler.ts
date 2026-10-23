@@ -7,6 +7,7 @@ import { formatExecutionTime, getTime } from '@common/utils/get-elapsed-time';
 import { sendWebhook } from '@common/utils/send-webhook';
 import { TorrentBlockerReportModel, XrayWebhookSchema } from '@libs/contracts/models';
 
+import { userIdentityOwner } from '../../../../common/utils/user-identity';
 import { NftService } from '../../services/nft.service';
 import { PluginStateService } from '../../services/plugin-state.service';
 import { XrayWebhookEvent } from './xray-webhook.event';
@@ -69,7 +70,7 @@ export class XrayWebhookHandler implements IEventHandler<XrayWebhookEvent> {
                     ip,
                     blockDuration,
                     willUnblockAt: new Date(Date.now() + blockDuration * 1000),
-                    userId: webhook.email,
+                    userId: userIdentityOwner(webhook.email) ?? webhook.email,
                     processedAt: new Date(),
                 },
                 xrayReport: webhook,
