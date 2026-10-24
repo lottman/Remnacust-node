@@ -1,14 +1,14 @@
 process.title = 'rw-node';
 import 'zod/compile';
-import * as bodyParser from '@kastov/body-parser-with-zstd';
+import * as bodyParser from 'body-parser';
 import compression from 'compression';
 import helmet from 'helmet';
 import { Server } from 'https';
 import morgan from 'morgan';
 import { utilities as nestWinstonModuleUtilities, WinstonModule } from 'nest-winston';
 import { ZodValidationPipe } from 'nestjs-zod';
-import { createSecureContext, SecureContext, SecureVersion } from 'node:tls';
 import { chmod } from 'node:fs/promises';
+import { createSecureContext, SecureContext, SecureVersion } from 'node:tls';
 import { createLogger } from 'winston';
 import * as winston from 'winston';
 
@@ -25,8 +25,8 @@ import { customLogFilter } from '@common/utils/filter-logs';
 import { getDuplicateInstanceMessage } from '@common/utils/get-duplicate-instance-message';
 import { getStartMessage } from '@common/utils/get-start-message';
 import { createInternalHttpApp } from '@common/utils/internal-http-app';
-import { privateInternalSocketPath } from '@common/utils/private-xtls-socket';
 import { isDevelopment } from '@common/utils/is-development';
+import { privateInternalSocketPath } from '@common/utils/private-xtls-socket';
 import { ROOT } from '@libs/contracts/api';
 import {
     XRAY_INTERNAL_FULL_PATH,

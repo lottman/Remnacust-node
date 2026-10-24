@@ -2,11 +2,19 @@
 
 Агент ноды получает конфигурацию и пользователей от панели, запускает Xray и возвращает статистику. Образ включает наше ядро с квотами хостов, ограничениями скорости и отзывом доступа устройств.
 
-**Версия 1.1.18** · **Основа: Remnawave Node 3.4.3** · [Панель](https://github.com/lottman/Remnacust-panel) · [Ядро](https://github.com/lottman/Remnacust-core)
+**Версия 1.1.19** · **Основа: Remnawave Node 3.4.3** · [Панель](https://github.com/lottman/Remnacust-panel) · [Ядро](https://github.com/lottman/Remnacust-core)
 
-Агент сообщает панели версию `1.1.18-remnacust`; версия Xray передаётся отдельно. Для обычной работы нужны Linux, Docker Engine и Compose v2. Управляющий порт должен быть доступен панели, порты inbound — клиентам.
+Агент сообщает панели версию `1.1.19-remnacust`; версия Xray передаётся отдельно. Для обычной работы нужны Linux, Docker Engine и Compose v2. Управляющий порт должен быть доступен панели, порты inbound — клиентам.
 
 С панелью 1.1.7.22 агент самостоятельно запрашивает актуальную конфигурацию после запуска и восстановления связи. Адрес HTTPS и отдельный токен своей ноды выдаёт панель через аутентифицированный запуск; состояние сохраняется в `/var/lib/remnacust/run/node-reconciliation.json`. Проверка проходит каждые 30–35 секунд и подтверждает только успешно применённую ревизию. Обычная проверка неизменной конфигурации не перезапускает Xray. [Удаление устройств и сверка состояния](https://github.com/lottman/Remnacust-panel/blob/main/docs/DEVICE-RECONCILIATION.md).
+
+## Канал управления
+
+Панель обращается к HTTPS API ноды через TLS 1.3 с клиентским сертификатом и отдельным JWT, подписанным RS256. Обратная сверка ноды с панелью использует HTTPS и токен конкретной ноды. Не подменяйте эти проверки отключением валидации сертификата или переходом на HTTP.
+
+JSON-запросы поддерживают `identity`, `gzip`, `deflate`, `br` и `zstd`. Парсер `body-parser` проверяет лимит распакованного тела; повреждённые сжатые данные отклоняются, не завершая процесс ноды. Отдельный внутренний HTTP-канал проверяет токен до чтения тела и доступен только через приватный Unix socket.
+
+Проверки исходников выполняются на Linux с Node.js 24: `npm ci`, `npm run typecheck`, `node --test tests/*.test.cjs`, `npm run build` из каталога `node`. Для проверки взаимодействия с панелью в её backend предусмотрен `tests/node-mtls-transport.test.cjs`; переменная `REMNACUST_NODE_SOURCE` должна указывать на каталог исходников `node` этого репозитория. Этот тест использует временные сертификаты и локальные HTTPS-серверы, не подключаясь к рабочим нодам.
 
 ## Установка
 
@@ -18,10 +26,10 @@
 curl -fsSL --proto '=https' --proto-redir '=https' https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh -o installer.sh && sudo bash installer.sh install-node
 ```
 
-[Скачать installer.sh](https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh). Скрипт спросит версию выпуска, API-порт, адрес панели для ограничения доступа и ключ; предложит TLS/XHTTP с выбором сертификата и email ACME; Enter выбирает `latest`. Комплект 1.2.80 содержит панель 1.1.7.46, ноду 1.1.18 и ядро 1.1.11. По умолчанию порт управления — 2222. Пример с явно указанным портом и выпуском:
+[Скачать installer.sh](https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh). Скрипт спросит версию выпуска, API-порт, адрес панели для ограничения доступа и ключ; предложит TLS/XHTTP с выбором сертификата и email ACME; Enter выбирает `latest`. Комплект 1.2.88 содержит панель 1.1.7.53, ноду 1.1.19 и ядро 1.1.11. По умолчанию порт управления — 2222. Пример с явно указанным портом и выпуском:
 
 ```bash
-sudo bash installer.sh install-node --port 2222 --version 1.2.80
+sudo bash installer.sh install-node --port 2222 --version 1.2.88
 ```
 
 Укажите тот же порт в карточке ноды. Ключ вводится скрыто; отдельный токен для скачивания не нужен. После запуска назначьте профиль и включите inbound, разрешите его во внутреннем скваде, создайте хост и проверьте подключение тестового пользователя.
@@ -40,7 +48,7 @@ sudo bash installer.sh migrate-remnawave-node --container remnanode
 ```bash
 git clone https://github.com/lottman/Remnacust-node.git
 cd Remnacust-node
-docker build -f node/docker/Dockerfile -t remnacust-node:1.1.18 node
+docker build -f node/docker/Dockerfile -t remnacust-node:1.1.19 node
 cp node/.env.sample node/.env
 chmod 600 node/.env
 ```
@@ -122,3 +130,5 @@ Xera HTTP — форк транспорта XHTTP (SplitHTTP) из Xray-core, с
 [Комплект 1.2.80](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.80) опубликован: панель/страница подписки 1.1.7.46, Node 1.1.18, Core/WASM 1.1.11. Основа агента обновлена до официального выпущенного Node 3.4.3, Node.js в образах — до 24.22.1. Ядро, автономные квоты, лимиты и ключи устройств сохранены. [Проверки агента](https://github.com/lottman/Remnacust-node/actions/runs/39790563087) и [сборка шести образов](https://github.com/lottman/Remnacust-installer/actions/runs/39792039649) прошли; проверены контрольные суммы и публичное скачивание. Исторические сведения о 1.2.73 выше остаются описанием того выпуска.
 
 В 1.1.18 включённая защита плагина отклоняется до изменения активной конфигурации, если у ноды нет требуемой возможности. Health-ответ сообщает поддержку строгих подтверждений плагинов. Исключения torrent blocker применяются к владельцу всех его персональных ключей; отчёты сохраняют исходную Xray-идентичность. Ядро остаётся 1.1.11.
+
+В 1.1.19 JSON-запросы обрабатываются штатным body-parser 2.4.0 с поддержкой identity/gzip/deflate/br/zstd в Node.js 24. Проверены предел распакованного тела, некорректные и оборванные сжатые потоки, продолжение работы после ошибки. Обновлены зависимости обработки запросов и Zod; ядро остаётся 1.1.11.

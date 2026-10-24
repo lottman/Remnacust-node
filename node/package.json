@@ -1,6 +1,6 @@
 {
   "name": "@remnacust/node",
-  "version": "1.1.18",
+  "version": "1.1.19",
   "private": false,
   "description": "Remnacust Node",
   "homepage": "https://github.com/lottman/Remnacust-node",
@@ -34,7 +34,6 @@
   "dependencies": {
     "@bufbuild/protobuf": "2.12.0",
     "@henrygd/semaphore": "0.1.0",
-    "@kastov/body-parser-with-zstd": "2.2.2",
     "@nestjs/common": "11.2.1",
     "@nestjs/config": "4.0.4",
     "@nestjs/core": "11.2.1",
@@ -47,6 +46,7 @@
     "@remnawave/node-plugins": "0.8.3",
     "@remnawave/xtls-sdk": "0.17.0",
     "@remnawave/xtls-sdk-nestjs": "0.6.1",
+    "body-parser": "2.4.0",
     "compression": "^1.8.2",
     "consola": "^3.4.2",
     "enhanced-ms": "^4.2.0",
@@ -70,7 +70,7 @@
     "semver": "^7.8.5",
     "sockdestroy": "2.0.1",
     "winston": "^3.19.0",
-    "zod": "4.5.4"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@nestjs/cli": "11.0.24",
@@ -94,6 +94,10 @@
     "webpack-node-externals": "^3.0.0"
   },
   "overrides": {
+    "body-parser": "2.4.0",
+    "fast-uri": "3.1.9",
+    "multer": "2.5.0",
+    "zod": "$zod",
     "@grpc/grpc-js": "1.14.5",
     "proxy-addr": "2.0.8",
     "tinypool": "2.1.2",
