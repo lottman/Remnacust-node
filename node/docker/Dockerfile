@@ -20,8 +20,8 @@ RUN npm run build \
 
 FROM golang:1.27.3-alpine AS xray-device-build
 
-ARG XRAY_CORE_VERSION=v26.10.21
-ARG XRAY_CORE_COMMIT=1b1647cd9ddf0abc34b981d4611fc03bcac1ca74
+ARG XRAY_CORE_VERSION=v26.10.31
+ARG XRAY_CORE_COMMIT=a4a3dff5b20c2faae567b742c172c7b95e75c083
 RUN apk add --no-cache git
 COPY docker/remnacust-core.tar.gz docker/remnacust-core.tar.gz.sha256 /tmp/
 RUN cd /tmp && sha256sum -c remnacust-core.tar.gz.sha256 \
@@ -38,7 +38,7 @@ RUN go test ./infra/conf ./transport/internet/xerahttp ./app/dispatcher ./app/pr
 
 FROM alpine:3.21 AS xray
 
-ARG XRAY_CORE_VERSION=v26.10.21
+ARG XRAY_CORE_VERSION=v26.10.31
 ARG UPSTREAM_REPO=XTLS
 ARG TARGETARCH
 

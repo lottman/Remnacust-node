@@ -2,9 +2,11 @@
 
 Агент ноды получает конфигурацию и пользователей от панели, запускает Xray и возвращает статистику. Образ включает наше ядро с квотами хостов, ограничениями скорости и отзывом доступа устройств.
 
-**Версия 1.1.19** · **Основа: Remnawave Node 3.4.3** · [Панель](https://github.com/lottman/Remnacust-panel) · [Ядро](https://github.com/lottman/Remnacust-core)
+**Версия 1.1.20** · **Основа: Remnawave Node 3.4.3** · [Панель](https://github.com/lottman/Remnacust-panel) · [Ядро](https://github.com/lottman/Remnacust-core)
 
-Агент сообщает панели версию `1.1.19-remnacust`; версия Xray передаётся отдельно. Для обычной работы нужны Linux, Docker Engine и Compose v2. Управляющий порт должен быть доступен панели, порты inbound — клиентам.
+Образ содержит Core 1.1.12 на стабильном Xray v26.10.31: входящие TCP-слушатели по умолчанию не включают MPTCP. Исходящие XDRIVE-сессии сохраняют совместимость со старыми узлами. Обновление панели отдельно не заменяет ядро уже работающей удалённой ноды.
+
+Агент сообщает панели версию `1.1.20-remnacust`; версия Xray передаётся отдельно. Для обычной работы нужны Linux, Docker Engine и Compose v2. Управляющий порт должен быть доступен панели, порты inbound — клиентам.
 
 С панелью 1.1.7.22 агент самостоятельно запрашивает актуальную конфигурацию после запуска и восстановления связи. Адрес HTTPS и отдельный токен своей ноды выдаёт панель через аутентифицированный запуск; состояние сохраняется в `/var/lib/remnacust/run/node-reconciliation.json`. Проверка проходит каждые 30–35 секунд и подтверждает только успешно применённую ревизию. Обычная проверка неизменной конфигурации не перезапускает Xray. [Удаление устройств и сверка состояния](https://github.com/lottman/Remnacust-panel/blob/main/docs/DEVICE-RECONCILIATION.md).
 
@@ -48,7 +50,7 @@ sudo bash installer.sh migrate-remnawave-node --container remnanode
 ```bash
 git clone https://github.com/lottman/Remnacust-node.git
 cd Remnacust-node
-docker build -f node/docker/Dockerfile -t remnacust-node:1.1.19 node
+docker build -f node/docker/Dockerfile -t remnacust-node:1.1.20 node
 cp node/.env.sample node/.env
 chmod 600 node/.env
 ```
