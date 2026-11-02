@@ -55,6 +55,7 @@ import {
 import { NodeReconciliationService } from './node-reconciliation.service';
 import { PortPlanStateStore, portPlanInputsHash } from './port-plan-state';
 import { makeProfileInput } from './profile-input';
+import { applyRuntimeUpdate } from './runtime-listener-update';
 import { XrayProcessService } from './xray-process.service';
 
 const XRAY_LOG_FILE = '/var/log/xray/current' as const;
@@ -391,12 +392,31 @@ export class XrayService implements OnApplicationBootstrap {
                         throw new Error(
                             'The core retained a replayed delivery; request a fresh panel delivery to rebuild node user state',
                         );
-                } else
-                    await this.liveCore.apply(
-                        this.xrayPath,
-                        this.internal.xtlsApiSocketPath,
-                        fullConfig,
-                    );
+                } else {
+                    const restarted = await applyRuntimeUpdate({
+                        apply: () => this.liveCore.apply(this.xrayPath, this.internal.xtlsApiSocketPath, fullConfig),
+                        requireLiveApply,
+                        checkpoint: LIVE_CORE_CHECKPOINT,
+                        validate: () => validateCoreConfig(this.xrayPath, fullConfig, this.managedCore.root),
+                        prepare: () => this.liveCore.prepareRestart(this.xrayPath, fullConfig),
+                        restart: async () => {
+                            this.isXrayOnline = false;
+                            const result = await this.restartXrayProcess();
+                            if (result.error) throw new Error('Listener replacement process failed to start');
+                            const readiness = await this.getXrayInternalStatus();
+                            if (!readiness.isStarted) throw new Error('Listener replacement readiness check failed');
+                            this.isXrayOnline = true;
+                        },
+                        stop: async () => {
+                            this.isXrayOnline = false;
+                            await this.xrayProcess.stop();
+                        },
+                    });
+                    if (restarted) {
+                        this.logger.warn('Listener settings changed; Xray was validated and restarted automatically');
+                        await this.refreshXrayVersion();
+                    }
+                }
                 // Replay preserves subsequent native user mutations. Replacing
                 // the index from an old source would resurrect stale membership.
                 if (!replay) await rememberConfiguration();

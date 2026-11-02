@@ -5,7 +5,7 @@ const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOpt
 const loadModel=name=>{const module={exports:{}};new Function('require','module','exports',compile(path.join(__dirname,'../src/modules/xray-core/models/'+name+'.ts')))(()=>({}),module,module.exports);return module.exports;};
 const models={...loadModel('start-xray.response.model'),...loadModel('get-node-health-check.model')};
 const portStateModule=(()=>{const ref={exports:{}};new Function('require','module','exports',compile(path.join(__dirname,'../src/modules/xray-core/port-plan-state.ts')))(require,ref,ref.exports);return ref.exports;})();
-function fixture(){
+function fixture(checkpoint='/fixture/checkpoint.pb'){
     const state={supported:true,up:true,stats:true,calls:[],applyError:null,savedPortPlan:null};
     const mocks={};for(const match of fs.readFileSync(file,'utf8').matchAll(/from '([^']+)'/g))if(!match[1].startsWith('node:'))mocks[match[1]]={};
     mocks['enhanced-ms']={__esModule:true,default:()=>''};
@@ -21,6 +21,8 @@ function fixture(){
         mocks[name]={[exportName]:class{}};
     }
     mocks['./port-plan-state']=portStateModule;
+    mocks['./runtime-listener-update']=require('./load-typescript.cjs')(path.join(__dirname,'../src/modules/xray-core/runtime-listener-update.ts'));
+    mocks['./live-core.service']={LIVE_CORE_CHECKPOINT:checkpoint};
     mocks['./profile-input']=require('./load-typescript.cjs')(path.join(__dirname,'../src/modules/xray-core/profile-input.ts'));
     mocks['./models']=models;const module={exports:{}};
     new Function('require','module','exports',compile(file))(id=>Object.hasOwn(mocks,id)?mocks[id]:local(id),module,module.exports);
@@ -31,7 +33,7 @@ function fixture(){
         internalService:{isNeedRestartCore:()=>true,hasConfiguration:()=>state.known!==false,hasProfileBindings:()=>!!state.profileInput,getProfileInput:()=>state.profileInput??null,extractUsersFromConfig:async(hashes,config,bindings,input)=>{state.calls.push('users');state.userConfig=config;state.bindings=bindings;state.profileInput=input;}},
         xtlsSdk:{stats:{getSysStats:async()=>({isOk:state.stats})}},xrayProcess:{getStatus:async()=>({up:state.up})},
         liveCore:{supported:async()=>{state.calls.push('capability');return state.supported;},profilesSupported:async()=>state.graphSupported!==false,
-            apply:async()=>{state.calls.push('apply');if(state.applyError)throw Error(state.applyError);},prepareRestart:async()=>state.calls.push('checkpoint'),
+            apply:async()=>{state.calls.push('apply');if(state.applyError)throw state.applyError instanceof Error?state.applyError:Error(state.applyError);},prepareRestart:async()=>state.calls.push('checkpoint'),
             applyProfiles:async(binary,socket,input)=>{state.calls.push('apply-profiles');if(state.applyError)throw Error(state.applyError);state.nativeInput=input;return {unchanged:state.replay??false};},
             prepareProfileRestart:async(binary,input)=>{state.calls.push('checkpoint-profiles');state.nativeInput=input;}},
         coreLoaderService:{prepare:async()=>{}},geodataService:{prepare:async()=>{}},
@@ -52,6 +54,23 @@ test('a required native port plan rejects an old core or force restart before ch
 test('a failed native apply keeps the existing process and cannot fall back to a maintenance restart',async()=>{
     const f=fixture();f.state.applyError='fixture live apply failed';const result=await f.run();assert.equal(result.response.isStarted,true);assert.equal(result.response.error,f.state.applyError);
     assert.ok(f.state.calls.includes('apply'));for(const action of ['checkpoint','restart','users','enroll'])assert.equal(f.state.calls.includes(action),false,action);
+});
+
+test('ordinary listener changes use checked automatic restart while strict plans preserve the same native rejection',async t=>{
+    const promises=require('node:fs/promises'),os=require('node:os'),crypto=require('node:crypto');
+    const directory=await promises.mkdtemp(path.join(os.tmpdir(),'remnacust-start-listener-'));await promises.chmod(directory,0o700);
+    t.after(()=>promises.rm(directory,{recursive:true,force:true,maxRetries:3,retryDelay:20}));
+    const checkpoint=path.join(directory,'checkpoint.pb'),payload=Buffer.from('previous-runtime');
+    await promises.writeFile(checkpoint,Buffer.concat([Buffer.from('REMNACUST-CORE-STATE-1\n'+crypto.createHash('sha256').update(payload).digest('hex')+'\n'),payload]),{mode:0o600});
+    const rejection=Object.assign(new Error('native listener change'),{code:1,stdout:'',stderr:'runtime apply failed: rpc error: code = FailedPrecondition desc = Inbound YandexCDN-RU1 changes its port or transport; create a separate port/tag and retain this listener\n'});
+    const f=fixture(checkpoint);f.request.internals.requireLiveApply=undefined;f.state.applyError=rejection;
+    const result=await f.run();assert.equal(result.response.error,null);assert.equal(result.response.isStarted,true);
+    assert(f.state.calls.indexOf('validate')<f.state.calls.indexOf('checkpoint'));
+    assert(f.state.calls.indexOf('checkpoint')<f.state.calls.indexOf('restart'));
+    assert(f.state.calls.indexOf('restart')<f.state.calls.indexOf('users'));
+    const strict=fixture(checkpoint);strict.state.applyError=rejection;
+    assert.equal((await strict.run()).response.error,'native listener change');
+    assert.equal(strict.state.calls.includes('restart'),false);
 });
 
 test('an owned delivery renders plugin changes even when user and profile hashes are unchanged',async()=>{

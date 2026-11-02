@@ -16,4 +16,12 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: node --test tests/*.test.cjs
+      - name: Verify automatic listener replacement and rollback with the published native core
+        env:
+          REMNACUST_LISTENER_TEST_CORE: ${{ runner.temp }}/remnacust-listener-core
+        run: |
+          curl --fail --location --proto '=https' --proto-redir '=https' --max-filesize 201326592 https://github.com/lottman/Remnacust-core/releases/download/v1.1.12/remnacust-core-1.1.12-linux-amd64 -o "$REMNACUST_LISTENER_TEST_CORE"
+          printf '8cd8d4ec180c932318b03fb638ec33f7dd22fd3146b4d406121a793ce4182219  %s\n' "$REMNACUST_LISTENER_TEST_CORE" | sha256sum -c
+          chmod 755 "$REMNACUST_LISTENER_TEST_CORE"
+          node --test tests/runtime-listener-process.test.cjs
       - run: npm run build
