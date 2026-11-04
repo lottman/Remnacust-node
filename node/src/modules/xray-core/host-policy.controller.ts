@@ -68,6 +68,7 @@ import { XrayProcessService } from './xray-process.service';
 
 const VERSION = 'xera-host-policy-v2';
 const DEVICE_SPEED_LIMITS = 'remnacust-device-speed-v1';
+const ROUTED_DEVICE_SPEED_LIMITS = 'remnacust-routed-device-speed-v1';
 const DIRECTORY = '/var/lib/remnanode';
 const FILE = `${DIRECTORY}/host-policy.json`;
 const QUOTA_FENCES = 'remnacust-quota-fences-v1';
@@ -195,6 +196,7 @@ export const hostPolicySchema = z
             .refine((value) => /^[0-9]+$/.test(value) && BigInt(value) <= 9223372036854775807n)
             .optional(),
         protectedInbounds: z.array(z.string().min(1).max(255)).max(10000),
+        routedIdentities: z.literal(true).optional(),
         hosts: z.record(
             z.string().regex(/^[a-f0-9]{32}$/),
             z
@@ -349,7 +351,7 @@ export const hostPolicySchema = z
             )
                 ctx.addIssue({ code: 'custom', message: 'Missing quota multiplier' });
             if (
-                !policy.protectedInbounds.includes(host.inboundTag) ||
+                (!policy.routedIdentities && !policy.protectedInbounds.includes(host.inboundTag)) ||
                 host.groups.some((key) => !policy.groups[key]) ||
                 Object.keys(host.allowedIdentities).some((key) => !key.endsWith('~h' + id))
             )
@@ -417,6 +419,7 @@ export class HostPolicyController {
         supported: false,
         destinationRulesSupported: false,
         deviceSpeedLimitsSupported: false,
+        routedDeviceSpeedLimitsSupported: false,
         quotaReservesSupported: false,
         quotaRegistrationsSupported: false,
         quotaWatermarksSupported: false,
@@ -449,6 +452,9 @@ export class HostPolicyController {
                     key,
                     supported: binary.includes(Buffer.from(VERSION)),
                     deviceSpeedLimitsSupported: binary.includes(Buffer.from(DEVICE_SPEED_LIMITS)),
+                    routedDeviceSpeedLimitsSupported: binary.includes(
+                        Buffer.from(ROUTED_DEVICE_SPEED_LIMITS),
+                    ),
                     destinationRulesSupported: binary.includes(
                         Buffer.from('xera-destination-rules-v1'),
                     ),
@@ -523,6 +529,8 @@ export class HostPolicyController {
                 destinationRulesSupported: supported && this.versionCache.destinationRulesSupported,
                 deviceSpeedLimitsSupported:
                     supported && this.versionCache.deviceSpeedLimitsSupported,
+                routedDeviceSpeedLimitsSupported:
+                    supported && this.versionCache.routedDeviceSpeedLimitsSupported,
                 quotaReservesSupported: supported && this.versionCache.quotaReservesSupported,
                 quotaRegistrationsSupported:
                     supported && this.versionCache.quotaRegistrationsSupported,
@@ -1033,9 +1041,31 @@ export class HostPolicyController {
             throw new ServiceUnavailableException(
                 'Update Xray Core: authenticated device speed limits are not supported',
             );
+        if (parsed.data.routedIdentities && !this.versionCache.routedDeviceSpeedLimitsSupported)
+            throw new ServiceUnavailableException(
+                'Update Xray Core: routed quota ownership is not supported',
+            );
         const needsDestinationRules = Object.values(parsed.data.hosts).some(
             (host) => host.domainMode !== 'OFF' && host.domains.some(isIpDestinationRule),
         );
+        if (!this.versionCache.routedDeviceSpeedLimitsSupported) {
+            const devices = new Map<string, string>();
+            for (const [hostId, host] of Object.entries(parsed.data.hosts)) {
+                for (const group of host.groups.filter(
+                    (key) => (parsed.data.groups[key]?.deviceBytesPerSecond ?? 0) > 0,
+                )) {
+                    for (const [identity, allowed] of Object.entries(host.allowedIdentities)) {
+                        if (!allowed) continue;
+                        const device = `${group}:${identity.split('~h')[0]}`;
+                        if (devices.has(device) && devices.get(device) !== hostId)
+                            throw new ServiceUnavailableException(
+                                'Update Xray Core: shared autoselect device speed limits are not supported',
+                            );
+                        devices.set(device, hostId);
+                    }
+                }
+            }
+        }
         if (needsDestinationRules && !this.versionCache.destinationRulesSupported)
             throw new ServiceUnavailableException(
                 'Update Xray Core: IP and CIDR host rules are not supported',

@@ -194,7 +194,8 @@ function verifyCorePolicy(binary = '/usr/local/bin/rw-core', filename = '/var/li
     }
     try { fs.lstatSync(path.join(path.dirname(filename),'usage')); required.push('remnacust-usage-receipts-v1'); }
     catch(error) { if(error.code!=='ENOENT') throw error; }
-    if (policy.group || policy.protectedInbounds?.length) required.push(policy.version === 'xera-host-policy-v2' ? 'xera-host-policy-v2' : 'xera-host-policy-v1');
+    if (policy.group || policy.protectedInbounds?.length || Object.keys(policy.hosts??{}).length) required.push(policy.version === 'xera-host-policy-v2' ? 'xera-host-policy-v2' : 'xera-host-policy-v1');
+    if (policy.routedIdentities) required.push('remnacust-routed-device-speed-v1');
     if (policy.offlineReserves) required.push('remnacust-quota-reserves-v1');
     if (Object.values(policy.groups??{}).some(group=>group?.fenceAll===true || Object.values(group?.fencedOwners??{}).includes(true))) required.push('remnacust-quota-fences-v1');
     if (required.some(marker => marker === userQuota || marker === 'remnacust-usage-receipts-v1' || marker === 'remnacust-quota-reserves-v1')) required.push('remnacust-unreserved-usage-v1');

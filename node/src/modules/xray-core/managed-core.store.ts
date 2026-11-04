@@ -361,6 +361,7 @@ export async function validateCoreConfig(
                 JSON.parse(value) as {
                     group?: string;
                     protectedInbounds?: string[];
+                    routedIdentities?: boolean;
                     version?: string;
                     offlineReserves?: string;
                     quotaRegistrations?: string;
@@ -378,6 +379,11 @@ export async function validateCoreConfig(
             throw new Error('Saved host policy cannot be verified before changing the core');
         });
     const userQuotaRequired = await userQuotaRequiredOnDisk();
+    if (
+        policy?.routedIdentities &&
+        !(await readFile(binary)).includes(Buffer.from('remnacust-routed-device-speed-v1'))
+    )
+        throw new Error('The selected core cannot preserve routed quota ownership');
     const journal = await readQuotaJournal().catch((error: NodeJS.ErrnoException) => {
         if (error.code === 'ENOENT' && !policy?.offlineReserves) return null;
         throw error;
@@ -428,7 +434,9 @@ export async function validateCoreConfig(
         );
     }
     if (
-        (policy?.group || policy?.protectedInbounds?.length) &&
+        (policy?.group ||
+            policy?.protectedInbounds?.length ||
+            Object.keys(policy?.hosts ?? {}).length) &&
         !(await readFile(binary)).includes(
             Buffer.from(
                 policy?.version === 'xera-host-policy-v2'

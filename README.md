@@ -6,10 +6,10 @@
 
 | Компонент | Версия |
 | --- | --- |
-| Node | [1.1.21](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.21), основа Remnawave Node 3.4.3 |
-| Встроенное ядро | [Core 1.1.12](https://github.com/lottman/Remnacust-core/releases/tag/v1.1.12), стабильный Xray v26.10.31 |
-| Панель и страница подписки | [1.1.7.87](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.87) |
-| Готовый Docker-комплект | [1.2.125](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.125), Linux amd64/arm64 |
+| Node | [1.1.22](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.22), основа Remnawave Node 3.4.3 |
+| Встроенное ядро | [Core 1.1.13](https://github.com/lottman/Remnacust-core/releases/tag/v1.1.13), стабильный Xray v26.10.31 |
+| Панель и страница подписки | [1.1.7.93](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.93) |
+| Готовый Docker-комплект | [1.2.131](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.131), Linux amd64/arm64 |
 
 Обновление одной панели не заменяет ядро удалённой ноды. В новом ядре MPTCP выключен по умолчанию; исходящий XDRIVE сохраняет сегментный формат для совместимости со старыми узлами. Обновление приложения не заменяет обновление ядра Linux на сервере.
 
@@ -21,7 +21,7 @@
 
 ```bash
 curl -fsSL --proto '=https' --proto-redir '=https' https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh -o installer.sh
-sudo bash installer.sh install-node --version 1.2.125
+sudo bash installer.sh install-node --version 1.2.131
 ```
 
 Скрипт запрашивает API-порт, ключ, сетевые ограничения и при необходимости TLS/XHTTP. По умолчанию API использует 2222; такой же порт укажите в карточке ноды. Затем назначьте профиль, включите inbound, разрешите его скваду и создайте хост с клиентским адресом/портом.

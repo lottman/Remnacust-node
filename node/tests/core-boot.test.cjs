@@ -41,6 +41,15 @@ test('registered journal boot gate survives lost policy and refuses old binaries
     assert.doesNotThrow(()=>verifyCorePolicy(binary,policy,checkpoint));
 });
 
+test('container boot cannot drop routed quota ownership even without globally protected listeners',t=>{
+    const f=fixture(t),policy=path.join(f.root,'policy.json');
+    fs.writeFileSync(policy,JSON.stringify({version:'xera-host-policy-v2',routedIdentities:true,protectedInbounds:[],hosts:{route:{}}}));
+    fs.writeFileSync(f.stock,'xera-host-policy-v2');
+    assert.throws(()=>verifyCorePolicy(f.stock,policy),/cannot enforce/);
+    fs.appendFileSync(f.stock,' remnacust-routed-device-speed-v1');
+    assert.doesNotThrow(()=>verifyCorePolicy(f.stock,policy));
+});
+
 function fixture(t) {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(),'remnacust-core-boot-'));
     t.after(() => fs.rmSync(directory,{recursive:true,force:true}));

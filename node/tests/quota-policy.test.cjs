@@ -82,6 +82,21 @@ test('policy acknowledgement waits for a persisted requirement and invalidates t
     state.coreProcessId='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';assert.equal((await controller.status()).response.applied,false);
     state.requirementError=true;await assert.rejects(controller.update(value),/persisted the user quota requirement/);assert.equal((await controller.status()).response.applied,false);
 });
+test('routed policies retain unrestricted direct listeners and require an updated core before any write',async()=>{
+    const {schema,controller,state}=fixture(),value=policy(false);
+    value.protectedInbounds=[];
+    assert.equal(schema.safeParse(value).success,false);
+    value.routedIdentities=true;
+    assert.equal(schema.safeParse(value).success,true);
+    await assert.rejects(controller.update(value),/routed quota ownership/);
+    assert(!state.calls.some(call=>call[0]==='write'));
+    controller.versionCache.routedDeviceSpeedLimitsSupported=true;
+    await controller.update(value);
+    const saved=JSON.parse(state.calls.find(call=>call[0]==='write')[1]);
+    assert.equal(saved.routedIdentities,true);
+    assert.deepEqual(saved.protectedInbounds,[]);
+});
+
 const H = '11111111111141118111111111111111';
 const EMAIL = '123~0123456789abcdef01234567~h' + H;
 function policy(offline = true) {
@@ -333,4 +348,27 @@ test('device speed schema is bounded and a legacy core cannot publish the new li
     await controller.update(value);
     const saved=state.calls.find(call=>call[0]==='write');
     assert.equal(JSON.parse(saved[1]).groups[key].deviceBytesPerSecond,250000);
+});
+
+test('device limits across route identities require a capable live core and are advertised in status', async () => {
+    const { controller, state } = fixture();
+    const value = policy(false),
+        group = Object.keys(value.groups)[0],
+        first = Object.keys(value.hosts)[0];
+    const second = '22222222222242228222222222222222';
+    value.groups[group].deviceBytesPerSecond = 250000;
+    controller.versionCache.deviceSpeedLimitsSupported = true;
+    value.hosts[second] = structuredClone(value.hosts[first]);
+    value.hosts[second].allowedIdentities = Object.fromEntries(
+        Object.entries(value.hosts[first].allowedIdentities).map(([key, allowed]) => [
+            key.replace(first, second),
+            allowed,
+        ]),
+    );
+    await assert.rejects(controller.update(value), /shared autoselect device speed limits/);
+    assert(!state.calls.some((call) => call[0] === 'write'));
+    controller.versionCache.routedDeviceSpeedLimitsSupported = true;
+    assert.equal((await controller.status()).response.routedDeviceSpeedLimitsSupported, true);
+    await controller.update(value);
+    assert(state.calls.some((call) => call[0] === 'write'));
 });

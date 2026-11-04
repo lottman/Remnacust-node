@@ -20,6 +20,14 @@ test('managed install/rollback validation rejects an old core before execution o
  }
 });
 
+test('managed rollback cannot bypass routed accounting on an unrestricted listener',async()=>{
+ const f=fixture();f.state.policy={version:'xera-host-policy-v2',routedIdentities:true,protectedInbounds:[],hosts:{route:{}}};
+ await assert.rejects(f.validate(),/routed quota ownership/);
+ assert.deepEqual(f.state.calls,[]);assert.deepEqual(f.state.writes,[]);
+ f.state.binary=Buffer.concat([f.state.binary,Buffer.from(' xera-host-policy-v2 remnacust-routed-device-speed-v1')]);
+ await f.validate();assert.equal(f.state.writes.length,1);
+});
+
 test('managed rollback cannot discard a persisted native port plan',async()=>{
  const f=fixture();f.state.portRequired=true;await assert.rejects(f.validate(),/independent port plans/);
  assert.deepEqual(f.state.calls,[]);assert.deepEqual(f.state.writes,[]);
