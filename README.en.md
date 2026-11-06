@@ -4,20 +4,20 @@
 
 The Remnacust agent receives panel configuration, manages Xray and reports statistics. Quota, speed, host and device extensions require a compatible Remnacust Core.
 
-## Stable components
+## Current components
 
-| Component | Published version |
+| Component | Version |
 | --- | --- |
-| Installer | [1.2.136](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.136) |
-| Panel and subscription page | [1.1.7.97](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.97) |
-| Node | [1.1.22](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.22), based on Remnawave Node 3.4.3 |
-| Core | [1.1.13](https://github.com/lottman/Remnacust-core/releases/tag/v1.1.13), Xray v26.10.31 |
+| Installer | [1.2.137](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.137) |
+| Panel and subscription page | [1.1.7.98](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.98) |
+| Node | [1.1.23](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.23), based on Remnawave Node 3.4.3 |
+| Core | [1.1.14](https://github.com/lottman/Remnacust-core/releases/tag/v1.1.14), Xray v26.10.31 |
 
 The agent and core have independent versions. Updating the panel does not update remote nodes. The current branch may contain unreleased changes.
 
 ## VPS installation
 
-Stable Installer 1.2.136 supports **Ubuntu 22.04/24.04/26.04 LTS**, Linux **amd64/arm64**. Debian 12/13 support has been added locally and is **not yet published**.
+Installer 1.2.137 supports **Ubuntu 22.04/24.04/26.04 LTS and Debian 12/13**, Linux **amd64/arm64**.
 
 The starting baseline is **1 CPU and 1 GiB RAM**, without a guaranteed user count, connection count or throughput. Resource use depends on transport, rules, encryption and load. VPS deployments use ready Docker images; Node.js and Go are not needed on the host.
 
@@ -25,9 +25,9 @@ Create a node in the panel and obtain its connection key:
 
 ```bash
 curl -fsSL --proto '=https' --proto-redir '=https' \
-  https://github.com/lottman/Remnacust-installer/releases/download/v1.2.136/installer.sh \
+  https://github.com/lottman/Remnacust-installer/releases/download/v1.2.137/installer.sh \
   -o installer.sh
-sudo bash installer.sh install-node --version 1.2.136
+sudo bash installer.sh install-node --version 1.2.137
 ```
 
 Enter the key and API port (default `2222`); the panel setting must match. For client traffic, separately assign a profile, enable an inbound, allow it for a squad and create a host with the required address and port.
@@ -86,9 +86,9 @@ A day of offline operation requires enough validity time and local credit for ex
 
 Ordinary Remnawave Node/Xray support standard configurations within their capabilities; they do not automatically gain Remnacust quota, device or recovery extensions. Do not bypass policy checks to install an older core. Xera HTTP (`network: "xera-http"`) requires compatible clients and servers; standard XHTTP is a separate transport. [Compatibility](docs/NODE-COMPATIBILITY.md) · [Limit scopes](https://github.com/lottman/Remnacust-panel/blob/main/docs/HOST-LIMITS.md).
 
-## Not yet published
+## Node 1.1.23 / Core 1.1.14 changes
 
-The local branch adds bounded Core crash recovery without the panel, respecting administrative pause and state validation, plus persistent mounts for manual Compose. The complete offline restart fix requires new, coordinated Node and Core builds; it is absent from the published components above. New MUX/Xera/uTLS fixes are described in [Core](https://github.com/lottman/Remnacust-core).
+This release adds bounded Core crash recovery without the panel, respecting administrative pause, state validation and private API readiness, plus persistent mounts for manual Compose. Quota recovery after some grants expire is fixed; complete offline restart requires Node 1.1.23 and Core 1.1.14 with preserved private state. Tests cover 24 virtual hours with connection failures and recovery; this is not a real day-long network run and does not remove expiry or quota limits. [Node changes](docs/RELEASE-1.1.23.md) · [Core changes](https://github.com/lottman/Remnacust-core/blob/main/docs/RELEASE-1.1.14.md).
 
 ## Build and documentation
 

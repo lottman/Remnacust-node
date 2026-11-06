@@ -2,11 +2,11 @@
 
 # Remnacust Node — agent source
 
-Stable agent **1.1.22** is based on Remnawave Node 3.4.3. Published components are Installer **1.2.136**, panel/page **1.1.7.97**, and Core **1.1.13 / Xray v26.10.31**. The current checkout may contain unreleased changes.
+Agent **1.1.23** is based on Remnawave Node 3.4.3. Coordinated components are Installer **1.2.137**, panel/page **1.1.7.98**, and Core **1.1.14 / Xray v26.10.31**. The current checkout may contain unreleased changes.
 
 ## For operators
 
-Use the [installation and maintenance guide](../README.en.md). The stable installer supports Ubuntu 22.04/24.04/26.04 LTS, Linux amd64/arm64; Debian 12/13 support has been added locally but is not yet published. The starting baseline is 1 CPU and 1 GiB RAM without a capacity guarantee. With a ready VPS image, Node.js and Go are not needed on the host.
+Use the [installation and maintenance guide](../README.en.md). Installer 1.2.137 supports Ubuntu 22.04/24.04/26.04 LTS and Debian 12/13, Linux amd64/arm64. The starting baseline is 1 CPU and 1 GiB RAM without a capacity guarantee. With a ready VPS image, Node.js and Go are not needed on the host.
 
 Persistent files are `/opt/remnacust/node/.env` and `/opt/remnacust/node/docker-compose.yml`; actual paths are listed in `/opt/remnacust/FILES.txt`. Preserve `SECRET_KEY`, configuration, certificates and all three state directories from the root README. For an older container without mounts, stop it first and copy its private state with ownership and permissions; do not hide it behind empty mounts during recreation.
 
@@ -48,7 +48,7 @@ The Core archive in [docker](docker) is verified using SHA-256. Changing Core re
 
 The agent and Core are updated separately; the image includes a bundled core, but a selected managed Core may remain pinned. Check the active version rather than only the image version. Replacing the process can interrupt connections.
 
-Offline operation is limited by access expiry, remaining USER/HOST/TAG credit and quota period deadlines; a calendar reset does not replenish credit offline. Restart requires persisted configuration, credentials and journals. A day of offline operation requires sufficient reserves and compatible components. Local watchdog/recovery fixes are not yet included in stable Node 1.1.22; full recovery requires new Node and Core builds.
+Offline operation is limited by access expiry, remaining USER/HOST/TAG credit and quota period deadlines; a calendar reset does not replenish credit offline. Restart requires persisted configuration, credentials and journals. A day of offline operation requires sufficient reserves and compatible components. Node 1.1.23 and Core 1.1.14 include watchdog/recovery fixes. Tests cover 24 virtual hours with connection failures and recovery; this is not a real day-long network run. [Node changes](../docs/RELEASE-1.1.23.md).
 
 Standard profiles remain compatible with legacy clients within their capabilities. Remnacust extensions and Xera require compatible components; do not disable policy checks to force a downgrade. [Compatibility](../docs/NODE-COMPATIBILITY.md) · [Offline operation requirements](https://github.com/lottman/Remnacust-panel/blob/main/docs/NODE-AUTONOMY.md).
 

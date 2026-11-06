@@ -4,20 +4,20 @@
 
 Агент Remnacust получает конфигурацию от панели, управляет Xray и передаёт статистику. Расширения квот, скорости, хостов и устройств требуют совместимого Remnacust Core.
 
-## Стабильный комплект
+## Текущий комплект
 
-| Компонент | Опубликованная версия |
+| Компонент | Версия |
 | --- | --- |
-| Installer | [1.2.136](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.136) |
-| Панель и страница подписки | [1.1.7.97](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.97) |
-| Node | [1.1.22](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.22), основа Remnawave Node 3.4.3 |
-| Core | [1.1.13](https://github.com/lottman/Remnacust-core/releases/tag/v1.1.13), Xray v26.10.31 |
+| Installer | [1.2.137](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.137) |
+| Панель и страница подписки | [1.1.7.98](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.98) |
+| Node | [1.1.23](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.23), основа Remnawave Node 3.4.3 |
+| Core | [1.1.14](https://github.com/lottman/Remnacust-core/releases/tag/v1.1.14), Xray v26.10.31 |
 
 Версии агента и ядра независимы. Обновление панели не обновляет удалённую ноду. Текущая ветка может содержать ещё не выпущенные изменения.
 
 ## Установка на VPS
 
-Стабильный Installer 1.2.136 поддерживает **Ubuntu 22.04/24.04/26.04 LTS**, Linux **amd64/arm64**. Поддержка Debian 12/13 добавлена локально и **ещё не опубликована**.
+Installer 1.2.137 поддерживает **Ubuntu 22.04/24.04/26.04 LTS и Debian 12/13**, Linux **amd64/arm64**.
 
 Начальный ориентир — **1 CPU и 1 GiB RAM**, без гарантии числа пользователей, соединений или пропускной способности. Расход ресурсов зависит от транспорта, правил, шифрования и нагрузки. На VPS используются готовые Docker-образы; Node.js и Go на хосте не нужны.
 
@@ -25,9 +25,9 @@
 
 ```bash
 curl -fsSL --proto '=https' --proto-redir '=https' \
-  https://github.com/lottman/Remnacust-installer/releases/download/v1.2.136/installer.sh \
+  https://github.com/lottman/Remnacust-installer/releases/download/v1.2.137/installer.sh \
   -o installer.sh
-sudo bash installer.sh install-node --version 1.2.136
+sudo bash installer.sh install-node --version 1.2.137
 ```
 
 Укажите ключ и API-порт (по умолчанию `2222`); порт в панели должен совпадать. Для клиентского трафика отдельно назначьте профиль, включите inbound, разрешите его скваду и создайте хост с нужным адресом и портом.
@@ -86,9 +86,9 @@ sudo remnacust restart --component node
 
 Обычные Remnawave Node/Xray совместимы со стандартными конфигурациями в пределах своих возможностей; они не получают автоматически расширения Remnacust для квот, устройств и восстановления. Не обходите проверки политик для установки старого ядра. Xera HTTP (`network: "xera-http"`) требует совместимых клиента и сервера; стандартный XHTTP — отдельный транспорт. [Совместимость](docs/NODE-COMPATIBILITY.md) · [Области лимитов](https://github.com/lottman/Remnacust-panel/blob/main/docs/HOST-LIMITS.md).
 
-## Ещё не опубликовано
+## Изменения Node 1.1.23 / Core 1.1.14
 
-Локальная ветка добавляет ограниченное восстановление Core после аварии без панели с учётом административной паузы и проверки состояния, а также постоянные mounts ручного Compose. Полное исправление offline restart требует новых согласованных Node и Core; его нет в опубликованном комплекте выше. Новые MUX/Xera/uTLS-исправления описаны в [Core](https://github.com/lottman/Remnacust-core).
+Выпуск добавляет ограниченное восстановление Core после аварии без панели с учётом административной паузы, проверки состояния и готовности приватного API, а также постоянные mounts ручного Compose. Исправлено восстановление квот после истечения части грантов; для полного offline restart нужны Node 1.1.23 и Core 1.1.14 с сохранённым приватным состоянием. Проверены 24 виртуальных часа с отказами связи и восстановлением; это не реальный суточный сетевой прогон и не отмена сроков или квот. [Изменения Node](docs/RELEASE-1.1.23.md) · [Изменения Core](https://github.com/lottman/Remnacust-core/blob/main/docs/RELEASE-1.1.14.md).
 
 ## Сборка и документация
 
