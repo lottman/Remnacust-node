@@ -8,16 +8,16 @@
 
 | Компонент | Версия |
 | --- | --- |
-| Installer | [1.2.137](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.137) |
-| Панель и страница подписки | [1.1.7.98](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.98) |
-| Node | [1.1.23](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.23), основа Remnawave Node 3.4.3 |
-| Core | [1.1.14](https://github.com/lottman/Remnacust-core/releases/tag/v1.1.14), Xray v26.10.31 |
+| Installer | [1.2.138](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.138) |
+| Панель и страница подписки | [1.1.7.99](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.99) |
+| Node | [1.1.24](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.24), основа Remnawave Node 3.4.3 |
+| Core | [1.1.15](https://github.com/lottman/Remnacust-core/releases/tag/v1.1.15), Xray v26.10.31 |
 
 Версии агента и ядра независимы. Обновление панели не обновляет удалённую ноду. Текущая ветка может содержать ещё не выпущенные изменения.
 
 ## Установка на VPS
 
-Installer 1.2.137 поддерживает **Ubuntu 22.04/24.04/26.04 LTS и Debian 12/13**, Linux **amd64/arm64**.
+Installer 1.2.138 поддерживает **Ubuntu 22.04/24.04/26.04 LTS и Debian 12/13**, Linux **amd64/arm64**.
 
 Начальный ориентир — **1 CPU и 1 GiB RAM**, без гарантии числа пользователей, соединений или пропускной способности. Расход ресурсов зависит от транспорта, правил, шифрования и нагрузки. На VPS используются готовые Docker-образы; Node.js и Go на хосте не нужны.
 
@@ -25,9 +25,9 @@ Installer 1.2.137 поддерживает **Ubuntu 22.04/24.04/26.04 LTS и Deb
 
 ```bash
 curl -fsSL --proto '=https' --proto-redir '=https' \
-  https://github.com/lottman/Remnacust-installer/releases/download/v1.2.137/installer.sh \
+  https://github.com/lottman/Remnacust-installer/releases/download/v1.2.138/installer.sh \
   -o installer.sh
-sudo bash installer.sh install-node --version 1.2.137
+sudo bash installer.sh install-node --version 1.2.138
 ```
 
 Укажите ключ и API-порт (по умолчанию `2222`); порт в панели должен совпадать. Для клиентского трафика отдельно назначьте профиль, включите inbound, разрешите его скваду и создайте хост с нужным адресом и портом.
@@ -86,9 +86,9 @@ sudo remnacust restart --component node
 
 Обычные Remnawave Node/Xray совместимы со стандартными конфигурациями в пределах своих возможностей; они не получают автоматически расширения Remnacust для квот, устройств и восстановления. Не обходите проверки политик для установки старого ядра. Xera HTTP (`network: "xera-http"`) требует совместимых клиента и сервера; стандартный XHTTP — отдельный транспорт. [Совместимость](docs/NODE-COMPATIBILITY.md) · [Области лимитов](https://github.com/lottman/Remnacust-panel/blob/main/docs/HOST-LIMITS.md).
 
-## Изменения Node 1.1.23 / Core 1.1.14
+## Изменения Node 1.1.24 / Core 1.1.15
 
-Выпуск добавляет ограниченное восстановление Core после аварии без панели с учётом административной паузы, проверки состояния и готовности приватного API, а также постоянные mounts ручного Compose. Исправлено восстановление квот после истечения части грантов; для полного offline restart нужны Node 1.1.23 и Core 1.1.14 с сохранённым приватным состоянием. Проверены 24 виртуальных часа с отказами связи и восстановлением; это не реальный суточный сетевой прогон и не отмена сроков или квот. [Изменения Node](docs/RELEASE-1.1.23.md) · [Изменения Core](https://github.com/lottman/Remnacust-core/blob/main/docs/RELEASE-1.1.14.md).
+Отображаемые имена процессов — `rc-node` и `rc-core` (Core в Linux); путь `rw-core` и контракты управления сохранены. Упаковщик Core отклоняет неполный vendored uTLS/olcRTC до записи выходных файлов; встроен Core 1.1.15. Исправления автономного восстановления из предыдущего выпуска сохранены, сроки и квоты не продлеваются. [Изменения Node](docs/RELEASE-1.1.24.md) · [Изменения Core](https://github.com/lottman/Remnacust-core/blob/main/docs/RELEASE-1.1.15.md).
 
 ## Сборка и документация
 

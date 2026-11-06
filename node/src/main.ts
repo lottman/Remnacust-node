@@ -1,4 +1,4 @@
-process.title = 'rw-node';
+process.title = 'rc-node';
 import 'zod/compile';
 import * as bodyParser from 'body-parser';
 import compression from 'compression';

@@ -8,8 +8,19 @@ if not (workspace / "xray/core/core.go").is_file():
 if not (workspace / "xray/core/core.go").is_file():
     raise SystemExit("Clone Remnacust-core next to Remnacust-node before repackaging the core")
 docker = node / 'docker'
+sources = [
+    ('Xray-core-main', 'xray', ('go.mod', 'go.sum', 'core/core.go', 'REMNACUST-UPSTREAM.json')),
+    ('.tmp-olcrtc', 'vendor/olcrtc', ('go.mod', 'go.sum', 'LICENSE', 'pkg/olcrtc/tunnel/tunnel.go')),
+    ('.tmp-utls', 'vendor/utls', ('go.mod', 'go.sum', 'LICENSE', 'u_handshake_client.go', 'REMNACUST-PATCH.json', 'certificate-decompression.patch')),
+]
+missing = [f'{source_folder}/{required}' for _, source_folder, required_files in sources
+           for required in required_files if not (workspace / source_folder / required).is_file()]
+if missing:
+    raise SystemExit('Incomplete Core source input at ' + str(workspace) + ': missing required files: ' +
+                     ', '.join(missing) + '. Preserve xray/, vendor/olcrtc/ and vendor/utls/ in the source bundle; outputs were not changed.')
+
 files = {}
-for folder, source_folder in [('Xray-core-main', 'xray'), ('.tmp-olcrtc', 'vendor/olcrtc'), ('.tmp-utls', 'vendor/utls')]:
+for folder, source_folder, _ in sources:
     for path in (workspace / source_folder).rglob('*'):
         relative = path.relative_to(workspace / source_folder)
         if not path.is_file() or any(p in {'.git', 'node_modules', 'vendor', '__pycache__'} for p in relative.parts):
