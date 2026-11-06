@@ -30,7 +30,8 @@ RUN cd /tmp && sha256sum -c remnacust-core.tar.gz.sha256 \
     && test "$(sed -n 's/.*"upstreamVersion": "\([^"]*\)".*/\1/p' core-source-lock.json)" = "${XRAY_CORE_VERSION}" \
     && test "$(sed -n 's/.*"upstreamCommit": "\([^"]*\)".*/\1/p' core-source-lock.json)" = "${XRAY_CORE_COMMIT}"
 WORKDIR /src/Xray-core-main
-RUN go test ./infra/conf ./transport/internet/xerahttp ./app/dispatcher ./app/proxyman/command ./app/commander \
+RUN go test github.com/refraction-networking/utls -run '^TestRemnacustCertificateCompression' -count=1 \
+    && go test ./infra/conf ./transport/internet/xerahttp ./app/dispatcher ./app/proxyman/command ./app/commander \
     && CORE_VERSION=$(sed -n 's/^  "version": "\([0-9.]*\)",$/\1/p' /src/core-source-lock.json) \
     && test -n "$CORE_VERSION" \
     && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X github.com/xtls/xray-core/core.build=Remnacust-${CORE_VERSION}" -o /tmp/xray ./main
@@ -101,7 +102,7 @@ COPY --from=certificates /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-ce
 ARG S6_OVERLAY_VERSION=3.2.3.2
 
 LABEL org.opencontainers.image.title="Remnacust Node"
-LABEL org.opencontainers.image.version="1.1.19"
+LABEL org.opencontainers.image.version="1.1.23"
 LABEL org.opencontainers.image.description="Remnacust Node with built-in XRay Core"
 LABEL org.opencontainers.image.url="https://github.com/lottman/Remnacust-node"
 LABEL org.opencontainers.image.source="https://github.com/lottman/Remnacust-node"

@@ -8,6 +8,10 @@ export class CoreManagementBarrier {
     private active: symbol | null = null;
     private readonly context = new AsyncLocalStorage<symbol>();
 
+    isBusy(): boolean {
+        return this.active !== null;
+    }
+
     acquire(): () => void {
         if (this.active && this.context.getStore() === this.active) return () => {};
         if (this.active)
@@ -31,6 +35,13 @@ export class CoreManagementBarrier {
         } finally {
             release();
         }
+    }
+
+    async tryRun<T>(
+        action: () => Promise<T>,
+    ): Promise<{ entered: false } | { entered: true; value: T }> {
+        if (this.active && this.context.getStore() !== this.active) return { entered: false };
+        return { entered: true, value: await this.run(action) };
     }
 }
 

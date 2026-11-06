@@ -111,7 +111,6 @@ async function dumpConfig({ raw = false }: { raw?: boolean } = {}) {
         return;
     }
 
-    consola.success('Configuration retrieved successfully!\n');
     consola.log(colorize(JSON.stringify(config, null, 2)));
     consola.success('Configuration dumped successfully!');
 }
@@ -139,7 +138,7 @@ async function killSocketsByIP() {
 }
 
 async function main() {
-    consola.box('Remnawave Node CLI v0.1');
+    consola.box('Remnacust Node CLI');
 
     const action = await consola.prompt('Select an action', {
         type: 'select',

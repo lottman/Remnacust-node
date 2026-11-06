@@ -11,6 +11,7 @@ import {
     Injectable,
     Logger,
     OnApplicationBootstrap,
+    OnModuleDestroy,
 } from '@nestjs/common';
 import { CommandBus, QueryBus } from '@nestjs/cqrs';
 
@@ -34,6 +35,7 @@ import { GetTorrentBlockerStateQuery } from '../_plugin/queries/get-torrent-bloc
 import { InternalService } from '../internal/internal.service';
 import { GetInterfaceStatsQuery } from '../network-stats/queries/get-interface-stats/get-interface-stats.query';
 import { restoreCachedCore } from './core-boot-recovery';
+import { CoreCrashWatchdog } from './core-crash-watchdog';
 import { CoreLoaderService } from './core-loader.service';
 import { coreManagement } from './core-management';
 import { GeodataService } from './geodata.service';
@@ -69,7 +71,7 @@ class XrayProcessDownError extends Error {
 }
 
 @Injectable()
-export class XrayService implements OnApplicationBootstrap {
+export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly portPlans = new PortPlanStateStore();
     private readonly logger = new Logger(XrayService.name);
     private readonly disableHashedSetCheck: boolean;
@@ -85,6 +87,24 @@ export class XrayService implements OnApplicationBootstrap {
     private isXrayOnline: boolean = false;
     private isXrayStartedProccesing: boolean = false;
     private nodeVersion: string = '0.0.0';
+    private readonly watchdog = new CoreCrashWatchdog({
+        busy: () => coreManagement.isBusy() || this.isXrayStartedProccesing,
+        exclusive: async (action) => (await coreManagement.tryRun(action)).entered,
+        paused: async () => (await this.managedCore.load()).paused,
+        status: async () => {
+            const status = await this.xrayProcess.getStatus();
+            return status.up ? 'up' : status.raw ? 'down' : 'unknown';
+        },
+        recover: (cancelled) => this.restoreCoreCheckpoint(cancelled),
+        stop: () => this.xrayProcess.stop(),
+        online: (value) => {
+            this.isXrayOnline = value;
+        },
+        warning: () =>
+            this.logger.warn(
+                'Local core recovery stopped; verify saved configuration and quota state before starting the core again',
+            ),
+    });
     constructor(
         @InjectXtls() private readonly xtlsSdk: XtlsApi,
         private readonly xrayProcess: XrayProcessService,
@@ -115,8 +135,6 @@ export class XrayService implements OnApplicationBootstrap {
     async onApplicationBootstrap() {
         this.isXrayOnline = false;
         try {
-            const paused = (await this.managedCore.load()).paused;
-            if (paused) await this.xrayProcess.stop();
             await this.refreshXrayVersion();
             this.nodeVersion = `${__RWNODE_VERSION__ ?? '0.0.0'}-remnacust`;
 
@@ -124,19 +142,33 @@ export class XrayService implements OnApplicationBootstrap {
                 this.logger.error('s6 xray control socket not found, exiting...');
                 process.exit(1);
             }
-            this.isXrayOnline = await coreManagement.run(() =>
-                restoreCachedCore({
-                    paused,
-                    checkpoint: LIVE_CORE_CHECKPOINT,
-                    supported: () => this.liveCore.supported(this.xrayPath),
-                    running: async () => (await this.xrayProcess.getStatus()).up,
-                    start: () => this.xrayProcess.start(),
-                    ready: async () => (await this.getXrayInternalStatus()).isStarted,
-                }),
-            );
+            await coreManagement.run(async () => {
+                const paused = (await this.managedCore.load()).paused;
+                if (paused) await this.xrayProcess.stop();
+                this.isXrayOnline = await this.restoreCoreCheckpoint();
+                if (this.isXrayOnline) this.watchdog.arm();
+            });
         } catch (error: unknown) {
             this.logger.error(`Error in Application Bootstrap: ${error}`);
+        } finally {
+            this.watchdog.start();
         }
+    }
+
+    async onModuleDestroy(): Promise<void> {
+        await this.watchdog.shutdown();
+    }
+
+    private async restoreCoreCheckpoint(cancelled?: () => boolean): Promise<boolean> {
+        return restoreCachedCore({
+            paused: (await this.managedCore.load()).paused,
+            checkpoint: LIVE_CORE_CHECKPOINT,
+            supported: () => this.liveCore.supported(this.xrayPath),
+            running: async () => (await this.xrayProcess.getStatus()).up,
+            start: () => this.xrayProcess.start(),
+            ready: () => this.xrayProcess.recoveryReady(this.xrayPath, this.internal.xtlsApiSocketPath),
+            cancelled,
+        });
     }
 
     public async startXray(
@@ -423,6 +455,7 @@ export class XrayService implements OnApplicationBootstrap {
                 await this.commandBus.execute(new RunPostStartCommand(body.internals.metadata));
                 if (portPlan) await this.portPlans.complete(portPlan, inputsHash);
                 await this.reconciliation?.enroll(body.internals.reconciliation);
+                this.watchdog?.arm();
                 return ok(
                     new StartXrayResponseModel(
                         true,
@@ -485,6 +518,7 @@ export class XrayService implements OnApplicationBootstrap {
             }
 
             this.isXrayOnline = true;
+            if (liveSupported) this.watchdog?.arm(true);
 
             await this.refreshXrayVersion();
             if (profileInput) await rememberConfiguration();
@@ -541,6 +575,7 @@ export class XrayService implements OnApplicationBootstrap {
         withPluginCleanup?: boolean;
         withOnlineCheck?: boolean;
     }): Promise<TResult<StopXrayResponseModel>> {
+        this.watchdog?.disarm();
         return coreManagement.run(() => this.stopXrayLocked(args));
     }
 
@@ -658,10 +693,11 @@ export class XrayService implements OnApplicationBootstrap {
             };
             if (request.action === 'stop') {
                 releaseManagement = coreManagement.acquire();
+                this.watchdog.disarm();
                 await this.managedCore.phase('stopping');
+                await this.managedCore.select({ ...selection, paused: true });
                 await this.xrayProcess.stop();
                 this.isXrayOnline = false;
-                await this.managedCore.select({ ...selection, paused: true });
             } else {
                 if (request.action === 'install' && request.release) {
                     await this.managedCore.phase('downloading');
@@ -783,6 +819,7 @@ export class XrayService implements OnApplicationBootstrap {
         const readiness = await this.getXrayInternalStatus();
         if (!readiness.isStarted) throw new Error('Core readiness check failed');
         this.isXrayOnline = true;
+        if (await this.liveCore.supported(this.xrayPath)) this.watchdog.arm(true);
     }
 
     public async getNodeHealthCheck(): Promise<TResult<GetNodeHealthCheckResponseModel>> {
@@ -810,8 +847,9 @@ export class XrayService implements OnApplicationBootstrap {
     }
 
     public async killAllXrayProcesses(): Promise<void> {
+        this.watchdog?.disarm();
         try {
-            await this.xrayProcess.stop();
+            await coreManagement.run(() => this.xrayProcess.stop());
 
             this.logger.log('s6: Xray process stopped.');
         } catch (error) {
@@ -899,6 +937,7 @@ export class XrayService implements OnApplicationBootstrap {
     private async restartXrayProcess(): Promise<{
         error: string | null;
     }> {
+        this.watchdog?.disarm();
         try {
             await this.xrayProcess.stop();
 

@@ -333,9 +333,14 @@ export async function validateCoreConfig(
     config: Record<string, unknown>,
     root: string,
 ) {
+    let binaryBytes: Promise<Buffer> | undefined;
+    const hasCapability = async (marker: string): Promise<boolean> => {
+        binaryBytes ??= readFile(binary);
+        return (await binaryBytes).includes(Buffer.from(marker));
+    };
     if (
         (await new PortPlanStateStore().read())?.required &&
-        !(await readFile(binary)).includes(Buffer.from(PORT_PLAN_CAPABILITY))
+        !(await hasCapability(PORT_PLAN_CAPABILITY))
     )
         throw new Error('The selected core cannot preserve independent port plans');
     const usageRequired = await lstat('/var/lib/remnanode/usage')
@@ -346,13 +351,13 @@ export async function validateCoreConfig(
         });
     if (
         usageRequired &&
-        !(await readFile(binary)).includes(Buffer.from('remnacust-usage-receipts-v1'))
+        !(await hasCapability('remnacust-usage-receipts-v1'))
     )
         throw new Error(
             'This node has durable usage receipts; the selected core cannot preserve their accounting',
         );
     if (await readRecoveryFence()) {
-        if (!(await readFile(binary)).includes(Buffer.from(QUOTA_RECOVERY_FENCE)))
+        if (!(await hasCapability(QUOTA_RECOVERY_FENCE)))
             throw new Error('The selected core cannot preserve the recovery pause');
     }
     const policy = await readFile('/var/lib/remnanode/host-policy.json', 'utf8')
@@ -381,7 +386,7 @@ export async function validateCoreConfig(
     const userQuotaRequired = await userQuotaRequiredOnDisk();
     if (
         policy?.routedIdentities &&
-        !(await readFile(binary)).includes(Buffer.from('remnacust-routed-device-speed-v1'))
+        !(await hasCapability('remnacust-routed-device-speed-v1'))
     )
         throw new Error('The selected core cannot preserve routed quota ownership');
     const journal = await readQuotaJournal().catch((error: NodeJS.ErrnoException) => {
@@ -391,7 +396,7 @@ export async function validateCoreConfig(
     if (journal?.registrationsRequired || policy?.quotaRegistrations) {
         if (
             policy?.quotaRegistrations !== QUOTA_REGISTRATION_VERSION ||
-            !(await readFile(binary)).includes(Buffer.from(QUOTA_REGISTRATION_VERSION))
+            !(await hasCapability(QUOTA_REGISTRATION_VERSION))
         )
             throw new Error('The selected core cannot preserve durable quota registration');
     }
@@ -404,7 +409,7 @@ export async function validateCoreConfig(
             !/^(0|[1-9][0-9]{0,15})$/.test(checkpoint.sequence) ||
             BigInt(checkpoint.sequence) > BigInt(journal.sequence) ||
             BigInt(checkpoint.sequence) < BigInt(journal.checkpoint) ||
-            !(await readFile(binary)).includes(Buffer.from(QUOTA_WATERMARK_VERSION))
+            !(await hasCapability(QUOTA_WATERMARK_VERSION))
         )
             throw new Error(
                 'The selected core or journal is behind the acknowledged quota checkpoint',
@@ -412,13 +417,13 @@ export async function validateCoreConfig(
     }
     if (
         (usageRequired || userQuotaRequired || policy?.userQuota || policy?.offlineReserves) &&
-        !(await readFile(binary)).includes(Buffer.from('remnacust-unreserved-usage-v1'))
+        !(await hasCapability('remnacust-unreserved-usage-v1'))
     )
         throw new Error('The selected core cannot preserve outside-grant quota accounting');
     if (userQuotaRequired || policy?.userQuota) {
         if (policy?.userQuota !== USER_QUOTA_VERSION)
             throw new Error('Recover the saved user quota policy before changing the core');
-        if (!(await readFile(binary)).includes(Buffer.from(USER_QUOTA_VERSION)))
+        if (!(await hasCapability(USER_QUOTA_VERSION)))
             throw new Error('The selected core cannot preserve autonomous user quotas');
         await run(
             binary,
@@ -437,13 +442,11 @@ export async function validateCoreConfig(
         (policy?.group ||
             policy?.protectedInbounds?.length ||
             Object.keys(policy?.hosts ?? {}).length) &&
-        !(await readFile(binary)).includes(
-            Buffer.from(
-                policy?.version === 'xera-host-policy-v2'
-                    ? 'xera-host-policy-v2'
-                    : 'xera-host-policy-v1',
-            ),
-        )
+        !(await hasCapability(
+            policy?.version === 'xera-host-policy-v2'
+                ? 'xera-host-policy-v2'
+                : 'xera-host-policy-v1',
+        ))
     ) {
         throw new Error(
             'This node has active host limits; the selected core does not support their enforcement',
@@ -451,7 +454,7 @@ export async function validateCoreConfig(
     }
     if (
         policy?.offlineReserves &&
-        !(await readFile(binary)).includes(Buffer.from('remnacust-quota-reserves-v1'))
+        !(await hasCapability('remnacust-quota-reserves-v1'))
     )
         throw new Error(
             'This node has local quota reserves; the selected core cannot enforce them',
@@ -461,7 +464,7 @@ export async function validateCoreConfig(
             (group) =>
                 group?.fenceAll === true || Object.values(group?.fencedOwners ?? {}).includes(true),
         ) &&
-        !(await readFile(binary)).includes(Buffer.from('remnacust-quota-fences-v1'))
+        !(await hasCapability('remnacust-quota-fences-v1'))
     )
         throw new Error(
             'This node has a pending quota transition; the selected core cannot preserve it',
@@ -470,7 +473,7 @@ export async function validateCoreConfig(
         Object.values(policy?.hosts ?? {}).some(
             (host) => host.domainMode !== 'OFF' && host.domains?.some(isIpDestinationRule),
         ) &&
-        !(await readFile(binary)).includes(Buffer.from('xera-destination-rules-v1'))
+        !(await hasCapability('xera-destination-rules-v1'))
     )
         throw new Error('This node has IP/CIDR host rules; the selected core cannot enforce them');
     if (!Array.isArray(config.inbounds) || config.inbounds.length === 0)

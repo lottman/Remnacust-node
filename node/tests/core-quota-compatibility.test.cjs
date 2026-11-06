@@ -1,11 +1,11 @@
 const test=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const path=require('node:path');const util=require('node:util');const ts=require('typescript');const {createRequire}=require('node:module');
 function fixture(){
- const state={policy:null,usage:false,userRequired:false,portRequired:false,registered:false,watermarked:false,calls:[],writes:[],binary:Buffer.from('remnacust-quota-reserves-v1 remnacust-user-quota-reserves-v1 remnacust-usage-receipts-v1')};
+ const state={policy:null,usage:false,userRequired:false,portRequired:false,registered:false,watermarked:false,calls:[],writes:[],binaryReads:0,binary:Buffer.from('remnacust-quota-reserves-v1 remnacust-user-quota-reserves-v1 remnacust-usage-receipts-v1')};
  const execFile=()=>{throw Error('Use promise interface');};execFile[util.promisify.custom]=async(...args)=>{state.calls.push(args);return {stdout:'',stderr:''};};
  const filename=path.join(__dirname,'../src/modules/xray-core/managed-core.store.ts'),local=createRequire(filename),ref={exports:{}};
  const mocks={'./quota-ledger':{QUOTA_REGISTRATION_VERSION:'remnacust-quota-registrations-v1',QUOTA_WATERMARK_VERSION:'remnacust-quota-watermarks-v1',readQuotaJournal:async()=>({registrationsRequired:state.registered,watermarksRequired:state.watermarked,instance:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',sequence:10,checkpoint:8})},'./port-plan-state':{PORT_PLAN_CAPABILITY:'remnacust-live-ports-v1',PortPlanStateStore:class{async read(){return state.portRequired?{required:true}:null;}}},'node:child_process':{execFile},'@common/utils/destination-rule':{isIpDestinationRule:()=>false},'./user-quota':{USER_QUOTA_VERSION:'remnacust-user-quota-reserves-v1',userQuotaRequiredOnDisk:async()=>state.userRequired},'node:fs/promises':{
   lstat:async()=>{if(state.usage)return {};throw Object.assign(Error('missing'),{code:'ENOENT'});},
-  readFile:async file=>{if(file==='/candidate')return state.binary;if(file==='/var/lib/remnanode/host-policy.json'&&state.policy!==null)return JSON.stringify(state.policy);throw Object.assign(Error('missing'),{code:'ENOENT'});},
+  readFile:async file=>{if(file==='/candidate'){state.binaryReads++;return state.binary;}if(file==='/var/lib/remnanode/host-policy.json'&&state.policy!==null)return JSON.stringify(state.policy);throw Object.assign(Error('missing'),{code:'ENOENT'});},
   writeFile:async(...args)=>state.writes.push(args),rm:async()=>{},
  }};
  mocks['./quota-recovery-fence']={QUOTA_RECOVERY_FENCE:'remnacust-quota-recovery-fence-v1',readRecoveryFence:async()=>state.recovery??null};
@@ -58,4 +58,15 @@ test('managed core selection cannot ignore or rewind a watermarked quota journal
  f.state.binary=Buffer.concat([f.state.binary,Buffer.from(' remnacust-quota-watermarks-v1')]);await f.validate();
  f.state.policy.quotaCheckpoint.sequence='7';await assert.rejects(f.validate(),/checkpoint/);
  f.state.policy.quotaCheckpoint.sequence='11';await assert.rejects(f.validate(),/checkpoint/);
+});
+
+test('one core validation reads the executable once for all policy capabilities and refreshes it on the next validation',async()=>{
+ const f=fixture();Object.assign(f.state,{usage:true,userRequired:true,portRequired:true,registered:true,watermarked:true,recovery:{state:'FENCED'}});
+ f.state.policy={version:'xera-host-policy-v2',routedIdentities:true,hosts:{route:{}},offlineReserves:'remnacust-quota-reserves-v1',userQuota:'remnacust-user-quota-reserves-v1',quotaRegistrations:'remnacust-quota-registrations-v1',quotaCheckpoint:{instance:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',sequence:'9'},groups:{group:{fenceAll:true}}};
+ const capabilities=['remnacust-live-ports-v1','remnacust-usage-receipts-v1','remnacust-quota-recovery-fence-v1','remnacust-routed-device-speed-v1','remnacust-quota-registrations-v1','remnacust-quota-watermarks-v1','remnacust-unreserved-usage-v1','remnacust-user-quota-reserves-v1','xera-host-policy-v2','remnacust-quota-reserves-v1','remnacust-quota-fences-v1'];
+ f.state.binary=Buffer.from(capabilities.join(' '));
+ await f.validate();assert.equal(f.state.binaryReads,1);
+ await f.validate();assert.equal(f.state.binaryReads,2);
+ f.state.binary=Buffer.from(capabilities.filter(value=>value!=='remnacust-routed-device-speed-v1').join(' '));
+ await assert.rejects(f.validate(),/routed quota ownership/);assert.equal(f.state.binaryReads,3);assert.equal(f.state.writes.length,2);
 });

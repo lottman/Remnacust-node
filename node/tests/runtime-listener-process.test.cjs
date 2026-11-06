@@ -27,7 +27,7 @@ async function exchange(port, bytes, length) {
     return new Promise((resolve, reject) => {
         const client = net.connect(port, '127.0.0.1'), chunks = [];
         let size = 0, completed = false;
-        const finish = error => { if (completed) return; completed = true; client.destroy(); error ? reject(error) : resolve(Buffer.concat(chunks)); };
+        const finish = error => { if (completed) return; completed = true; client.destroy(); if (error) reject(error); else resolve(Buffer.concat(chunks)); };
         client.setTimeout(3000, () => finish(new Error('Local listener test timed out')));
         client.on('error', finish);
         client.on('end', () => { if (!completed) finish(new Error('Local listener closed early')); });

@@ -72,6 +72,10 @@ export class NetworkStatsService implements OnModuleInit {
         try {
             const now = this.readProcNetDev();
 
+            for (const iface of this.currentRates.keys()) {
+                if (!now.has(iface)) this.currentRates.delete(iface);
+            }
+
             for (const [iface, current] of now) {
                 const prev = this.previousStats.get(iface);
                 if (!prev) continue;

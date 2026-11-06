@@ -32,3 +32,13 @@ test('untrusted checkpoints and a failed private API never acknowledge successfu
     }
     const value = fixture();value.state.ready = false;await assert.rejects(value.restore(), /private API/);assert.equal(value.state.starts, 1);
 });
+
+test('cancellation during capability or status validation cannot start the cached core', async () => {
+    for (const phase of ['supported', 'running']) {
+        const f = fixture(); let cancelled = false;
+        f.options.cancelled = () => cancelled;
+        f.options[phase] = async () => { cancelled = true; return phase === 'supported'; };
+        assert.equal(await f.restore(), false);
+        assert.equal(f.state.starts, 0, phase);
+    }
+});

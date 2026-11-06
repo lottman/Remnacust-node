@@ -1,6 +1,6 @@
 services:
   remnanode:
-    image: remnacust-node:1.1.1
+    image: remnacust-node:1.1.23
     build:
       context: .
       dockerfile: docker/Dockerfile
@@ -9,6 +9,10 @@ services:
     hostname: remnanode
     network_mode: host
     restart: always
+    volumes:
+      - ./run:/var/lib/remnacust/run
+      - ./state/host-policy:/var/lib/remnanode
+      - ./state/core-manager:/var/lib/remnawave/core-manager
     cap_add:
       - NET_ADMIN
     ulimits:

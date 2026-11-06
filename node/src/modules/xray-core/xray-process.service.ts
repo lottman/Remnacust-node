@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -20,6 +21,7 @@ export class XrayProcessService {
 
     private readonly serviceDir: string;
     private readonly controlFifo: string;
+    private statusFailureReported = false;
 
     private static readonly S6_SVC = '/command/s6-svc';
     private static readonly S6_SVSTAT = '/command/s6-svstat';
@@ -38,23 +40,43 @@ export class XrayProcessService {
     }
 
     public async stop(): Promise<void> {
-        await execFileAsync(XrayProcessService.S6_SVC, [
-            '-wd',
-            '-T',
-            String(XrayProcessService.DOWN_TIMEOUT_MS),
-            '-d',
-            this.serviceDir,
-        ]);
+        await execFileAsync(
+            XrayProcessService.S6_SVC,
+            ['-wd', '-T', String(XrayProcessService.DOWN_TIMEOUT_MS), '-d', this.serviceDir],
+            { timeout: XrayProcessService.DOWN_TIMEOUT_MS + 2000, maxBuffer: 16 * 1024 },
+        );
     }
 
     public async start(): Promise<void> {
-        await execFileAsync(XrayProcessService.S6_SVC, [
-            '-wu',
-            '-T',
-            String(XrayProcessService.UP_TIMEOUT_MS),
-            '-o',
-            this.serviceDir,
-        ]);
+        await execFileAsync(
+            XrayProcessService.S6_SVC,
+            ['-wu', '-T', String(XrayProcessService.UP_TIMEOUT_MS), '-o', this.serviceDir],
+            { timeout: XrayProcessService.UP_TIMEOUT_MS + 2000, maxBuffer: 16 * 1024 },
+        );
+    }
+
+    public async recoveryReady(binary: string, socket: string): Promise<boolean> {
+        const initial = await this.getStatus();
+        if (!initial.up || initial.pid === null) return false;
+        for (let attempt = 0; attempt < 5; attempt++) {
+            try {
+                const { stdout } = await execFileAsync(
+                    binary,
+                    ['api', 'statssys', `--server=unix:${socket}`, '--timeout=2'],
+                    { timeout: 3000, maxBuffer: 8 * 1024 },
+                );
+                const response: unknown = JSON.parse(stdout);
+                const current = await this.getStatus();
+                if (!current.up || current.pid !== initial.pid) return false;
+                if (response && typeof response === 'object' && !Array.isArray(response))
+                    return true;
+            } catch {
+                const current = await this.getStatus();
+                if (!current.up || current.pid !== initial.pid) return false;
+            }
+            if (attempt < 4) await delay(200);
+        }
+        return false;
     }
 
     public async getCoreVersion(): Promise<null | string> {
@@ -78,15 +100,19 @@ export class XrayProcessService {
 
     public async getStatus(): Promise<IXrayProcessStatus> {
         try {
-            const { stdout } = await execFileAsync(XrayProcessService.S6_SVSTAT, [
-                '-o',
-                'up,pid',
-                this.serviceDir,
-            ], { timeout: 2000, maxBuffer: 4096 });
+            const { stdout } = await execFileAsync(
+                XrayProcessService.S6_SVSTAT,
+                ['-o', 'up,pid', this.serviceDir],
+                { timeout: 2000, maxBuffer: 4096 },
+            );
 
             const raw = stdout.trim();
-            const [up, pid] = raw.split(/\s+/);
+            const match = /^(true [1-9][0-9]*|false -1)$/.exec(raw);
+            if (!match) return { up: false, pid: null, raw: '' };
+            const [up, pid] = raw.split(' ');
             const pidNum = Number(pid);
+            if (!Number.isSafeInteger(pidNum)) return { up: false, pid: null, raw: '' };
+            this.statusFailureReported = false;
 
             return {
                 up: up === 'true',
@@ -94,7 +120,9 @@ export class XrayProcessService {
                 raw,
             };
         } catch (error) {
-            this.logger.warn(`Failed to read xray s6 status: ${error}`);
+            if (!this.statusFailureReported)
+                this.logger.warn(`Failed to read xray s6 status: ${error}`);
+            this.statusFailureReported = true;
             return { up: false, pid: null, raw: '' };
         }
     }

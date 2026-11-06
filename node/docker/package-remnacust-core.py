@@ -9,18 +9,19 @@ if not (workspace / "xray/core/core.go").is_file():
     raise SystemExit("Clone Remnacust-core next to Remnacust-node before repackaging the core")
 docker = node / 'docker'
 files = {}
-for folder, source_folder in [('Xray-core-main', 'xray'), ('.tmp-olcrtc', 'vendor/olcrtc')]:
+for folder, source_folder in [('Xray-core-main', 'xray'), ('.tmp-olcrtc', 'vendor/olcrtc'), ('.tmp-utls', 'vendor/utls')]:
     for path in (workspace / source_folder).rglob('*'):
         relative = path.relative_to(workspace / source_folder)
         if not path.is_file() or any(p in {'.git', 'node_modules', 'vendor', '__pycache__'} for p in relative.parts):
             continue
         embedded_names = folder == '.tmp-olcrtc' and relative.parent.as_posix() == 'internal/names/data'
-        if path.suffix not in {'.go', '.proto', '.mod', '.sum', '.md', '.txt', '.html', '.json', '.yaml', '.yml', '.s', '.dat', '.usa', '.crt', '.key'} and path.name != 'LICENSE' and not embedded_names:
+        if path.suffix not in {'.go', '.proto', '.mod', '.sum', '.md', '.txt', '.html', '.json', '.yaml', '.yml', '.s', '.dat', '.usa', '.crt', '.key', '.patch'} and path.name != 'LICENSE' and not embedded_names:
             continue
         content = path.read_bytes()
         if path.suffix not in {'.dat', '.usa'}: content = content.replace(b'\r\n', b'\n')
         if folder == 'Xray-core-main' and relative.as_posix() == 'go.mod':
             content = content.replace(b'../vendor/olcrtc', b'../.tmp-olcrtc')
+            content = content.replace(b'../vendor/utls', b'../.tmp-utls')
         files[f'{folder}/{relative.as_posix()}'] = content
 source = json.loads((workspace / 'xray/REMNACUST-UPSTREAM.json').read_text(encoding='utf-8'))
 if not re.fullmatch(r'v[0-9][A-Za-z0-9.+-]*', source['upstreamVersion']) or not re.fullmatch(r'[a-f0-9]{40}', source['upstreamCommit']):
