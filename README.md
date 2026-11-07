@@ -8,8 +8,8 @@
 
 | Компонент | Версия |
 | --- | --- |
-| Installer | [1.2.139](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.139) |
-| Панель и страница подписки | [1.1.7.100](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.100) |
+| Installer | [1.2.140](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.140) |
+| Панель и страница подписки | [1.1.7.101](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.101) |
 | Node | [1.1.26](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.26), основа Remnawave Node 3.4.3 |
 | Core | [1.1.16](https://github.com/lottman/Remnacust-core/releases/tag/v1.1.16), Xray v26.10.31 |
 
@@ -17,7 +17,7 @@
 
 ## Установка на VPS
 
-Installer 1.2.139 поддерживает **Ubuntu 22.04/24.04/26.04 LTS и Debian 12/13**, Linux **amd64/arm64**.
+Installer 1.2.140 поддерживает **Ubuntu 22.04/24.04/26.04 LTS и Debian 12/13**, Linux **amd64/arm64**.
 
 Начальный ориентир — **1 CPU и 1 GiB RAM**, без гарантии числа пользователей, соединений или пропускной способности. Расход ресурсов зависит от транспорта, правил, шифрования и нагрузки. На VPS используются готовые Docker-образы; Node.js и Go на хосте не нужны.
 
