@@ -10,7 +10,7 @@
 | --- | --- |
 | Installer | [1.2.139](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.139) |
 | Панель и страница подписки | [1.1.7.100](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.100) |
-| Node | [1.1.25](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.25), основа Remnawave Node 3.4.3 |
+| Node | [1.1.26](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.26), основа Remnawave Node 3.4.3 |
 | Core | [1.1.16](https://github.com/lottman/Remnacust-core/releases/tag/v1.1.16), Xray v26.10.31 |
 
 Версии агента и ядра независимы. Обновление панели не обновляет удалённую ноду. Текущая ветка может содержать ещё не выпущенные изменения.
@@ -86,11 +86,11 @@ sudo remnacust restart --component node
 
 Обычные Remnawave Node/Xray совместимы со стандартными конфигурациями в пределах своих возможностей; они не получают автоматически расширения Remnacust для квот, устройств и восстановления. Не обходите проверки политик для установки старого ядра. Xera HTTP (`network: "xera-http"`) требует совместимых клиента и сервера; стандартный XHTTP — отдельный транспорт. [Совместимость](docs/NODE-COMPATIBILITY.md) · [Области лимитов](https://github.com/lottman/Remnacust-panel/blob/main/docs/HOST-LIMITS.md).
 
-## Изменения Node 1.1.25 / Core 1.1.16
+## Изменения Node 1.1.26 / Core 1.1.16
 
 Runtime обновлён до Node.js 26.13 LTS. Образ содержит custom Core 1.1.16 (`/usr/local/bin/xray`) и штатный Xray v26.10.31 (`/usr/local/bin/xray-default`). Глобальный режим панели по умолчанию — custom. Default проверяется до изменения процесса и отклоняется при несовместимых квотах, политиках или live port plans; журналы не удаляются и ограничения не снимаются. Смена binary требует restart с проверкой rollback и может прервать соединения. Проверенное managed custom-ядро сохраняется при совместимом custom-применении.
 
-Отображаемые имена процессов — `rc-node` и `rc-core` (Core в Linux); путь `rw-core` и контракты управления сохранены. Упаковщик Core отклоняет неполный vendored uTLS/olcRTC до записи выходных файлов; встроен Core 1.1.16. Исправления автономного восстановления из предыдущего выпуска сохранены, сроки и квоты не продлеваются. [Изменения Node](docs/releases/1.1.25.md) · [Изменения Core](https://github.com/lottman/Remnacust-core/blob/main/docs/releases/1.1.16.md).
+Отображаемые имена процессов — `rc-node` и `rc-core` (Core в Linux); путь `rw-core` и контракты управления сохранены. Упаковщик Core отклоняет неполный vendored uTLS/olcRTC до записи выходных файлов; встроен Core 1.1.16. Исправления автономного восстановления из предыдущего выпуска сохранены, сроки и квоты не продлеваются. [Изменения Node](docs/releases/1.1.26.md) · [Изменения Core](https://github.com/lottman/Remnacust-core/blob/main/docs/releases/1.1.16.md).
 
 ## Сборка и документация
 

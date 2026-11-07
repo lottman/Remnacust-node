@@ -20,8 +20,8 @@ jobs:
         env:
           REMNACUST_LISTENER_TEST_CORE: ${{ runner.temp }}/remnacust-listener-core
         run: |
-          curl --fail --location --proto '=https' --proto-redir '=https' --max-filesize 201326592 https://github.com/lottman/Remnacust-core/releases/download/v1.1.13/remnacust-core-1.1.13-linux-amd64 -o "$REMNACUST_LISTENER_TEST_CORE"
-          printf 'feb6fc7ee252873ed39d89e06711997e9bb4a91ed6adb5db45631b55b5425edb  %s\n' "$REMNACUST_LISTENER_TEST_CORE" | sha256sum -c
+          curl --fail --location --proto '=https' --proto-redir '=https' --max-filesize 201326592 https://github.com/lottman/Remnacust-core/releases/download/v1.1.16/remnacust-core-1.1.16-linux-amd64 -o "$REMNACUST_LISTENER_TEST_CORE"
+          printf 'f8ca5d7da286caf83c90d195c018ed2a3d3c97da3d405f05ebf031f1d60bf2c9  %s\n' "$REMNACUST_LISTENER_TEST_CORE" | sha256sum -c
           chmod 755 "$REMNACUST_LISTENER_TEST_CORE"
           node --test tests/runtime-listener-process.test.cjs
       - run: npm run build
