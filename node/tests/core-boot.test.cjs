@@ -82,6 +82,19 @@ test('a bundled selection uses the updated image while profile recovery uses its
     assert.equal(f.run(),false);
     assert.equal(fs.realpathSync(f.link),f.identity.path);
 });
+test('explicit default flavor survives image replacement and a missing stock image never falls back to custom', t => {
+    const f = fixture(t), stockDefault = f.stock + '-default';
+    fs.writeFileSync(stockDefault, 'pristine upstream fixture');
+    f.write({mode:'bundled',paused:true,binary:{...f.identity,path:stockDefault}});
+    assert.equal(f.run(),true);
+    assert.equal(fs.realpathSync(f.link),stockDefault);
+    fs.writeFileSync(stockDefault, 'updated upstream fixture');
+    assert.equal(f.run(),true);
+    assert.equal(fs.readFileSync(f.link,'utf8'),'updated upstream fixture');
+    fs.rmSync(stockDefault);
+    assert.equal(f.run(),true);
+    assert.throws(()=>fs.realpathSync(f.link),/ENOENT/);
+});
 test('interrupted operations restore the previous verified selection before public listeners start',t => {
     const f = fixture(t);
     f.write({mode:'managed',paused:false,binary:{...f.identity,sha256:'0'.repeat(64)},
@@ -92,6 +105,29 @@ test('interrupted operations restore the previous verified selection before publ
     assert.equal(state.operation.phase,'interrupted');
     assert.equal(state.recovery,undefined);
     assert.equal(f.run(),true);
+});
+test('a supervised service restart keeps the authorized in-flight selection; only container bootstrap rolls it back', t => {
+    const f = fixture(t), stockDefault = f.stock + '-default';
+    fs.writeFileSync(stockDefault,'official upstream fixture');
+    const recovery = {mode:'profile',paused:false,binary:f.identity};
+    f.write({mode:'bundled',paused:false,binary:{...f.identity,path:stockDefault},
+        operation:{id:'operation',status:'running'},recovery});
+    assert.equal(restoreCoreSelection(f.root,f.link,f.stock,false),false);
+    assert.equal(fs.realpathSync(f.link),stockDefault);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(f.root,'state.json'))).operation.status,'running');
+    assert.equal(f.run(),false);
+    assert.equal(fs.realpathSync(f.link),f.identity.path);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(f.root,'state.json'))).operation.status,'failed');
+});
+test('supervised legacy profile startup preserves its prepared download while container bootstrap uses the image baseline', t => {
+    const f = fixture(t), downloaded = f.stock + '-custom';
+    fs.writeFileSync(downloaded,'prepared profile core');
+    fs.symlinkSync(downloaded,f.link);
+    f.write({mode:'profile',paused:false});
+    assert.equal(restoreCoreSelection(f.root,f.link,f.stock,false),false);
+    assert.equal(fs.realpathSync(f.link),downloaded);
+    assert.equal(f.run(),false);
+    assert.equal(fs.realpathSync(f.link),f.stock);
 });
 test('tampered, missing and out-of-store binaries cannot be activated',t => {
     const f = fixture(t);

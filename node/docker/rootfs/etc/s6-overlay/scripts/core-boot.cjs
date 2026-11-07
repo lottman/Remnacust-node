@@ -71,7 +71,7 @@ function validateSavedPortPlan(state) {
 
 // Runs before s6 starts any public listener. A paused or invalid selection must
 // never briefly expose the bundled core during container replacement.
-function restoreCoreSelection(root = '/var/lib/remnawave/core-manager', link = '/usr/local/bin/rw-core', stock = '/usr/local/bin/xray') {
+function restoreCoreSelection(root = '/var/lib/remnawave/core-manager', link = '/usr/local/bin/rw-core', stock = '/usr/local/bin/xray', recoverInterrupted = true) {
     const filename = path.join(root, 'state.json');
     let descriptor;
     try { descriptor = fs.openSync(filename, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0)); }
@@ -83,7 +83,8 @@ function restoreCoreSelection(root = '/var/lib/remnawave/core-manager', link = '
         state = JSON.parse(fs.readFileSync(descriptor, 'utf8'));
     } finally { fs.closeSync(descriptor); }
     let interrupted = false;
-    if (state.operation?.status === 'running') {
+    if (state.operation?.status === 'running' && !state.recovery) throw Error('Core operation has no recovery selection');
+    if (state.operation?.status === 'running' && recoverInterrupted) {
         if (!state.recovery) throw Error('Core operation has no recovery selection');
         state.mode = state.recovery.mode;
         state.paused = state.recovery.paused;
@@ -96,7 +97,13 @@ function restoreCoreSelection(root = '/var/lib/remnawave/core-manager', link = '
     }
     if (!['profile','managed','bundled'].includes(state.mode) || typeof state.paused !== 'boolean') throw Error('Invalid persisted core selection');
     let target = stock;
-    if (state.binary && !(state.mode === 'bundled' && state.binary.path === stock)) {
+    if (!recoverInterrupted && state.mode === 'profile' && !state.binary) {
+        target = fs.realpathSync(link);
+        if (![stock, stock + '-custom'].includes(target)) throw Error('Invalid prepared profile core');
+    }
+    const bundled = state.mode === 'bundled' && [stock, stock + '-default'].includes(state.binary?.path);
+    if (bundled) target = state.binary.path;
+    if (state.binary && !bundled) {
         const digest = state.binary.sha256;
         if (typeof digest !== 'string' || !/^[a-f0-9]{64}$/.test(digest) || state.binary.path !== path.join(root,digest)) throw Error('Core selection is outside managed storage');
         target = state.binary.path;
@@ -209,7 +216,7 @@ function verifyCorePolicy(binary = '/usr/local/bin/rw-core', filename = '/var/li
 module.exports = { restoreCoreSelection, verifyCorePolicy, validateSavedPortPlan, PORT_PLAN_DELIVERY_CAPABILITY, QUOTA_REGISTRATION_CAPABILITY, registeredQuotaJournal, QUOTA_WATERMARK_CAPABILITY, quotaJournalCheckpoint, verifyQuotaCheckpoint, QUOTA_RECOVERY_FENCE, verifyRecoveryFence, verifyRecoveryState };
 if (require.main === module) {
     try {
-        const paused = restoreCoreSelection();
+        const paused = restoreCoreSelection(undefined, undefined, undefined, !process.argv.includes('--service-start'));
         verifyCorePolicy();
         process.exitCode = paused ? 75 : 0;
     }

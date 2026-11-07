@@ -8,16 +8,16 @@ The Remnacust agent receives panel configuration, manages Xray and reports stati
 
 | Component | Version |
 | --- | --- |
-| Installer | [1.2.138](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.138) |
-| Panel and subscription page | [1.1.7.99](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.99) |
-| Node | [1.1.24](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.24), based on Remnawave Node 3.4.3 |
-| Core | [1.1.15](https://github.com/lottman/Remnacust-core/releases/tag/v1.1.15), Xray v26.10.31 |
+| Installer | [1.2.139](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.139) |
+| Panel and subscription page | [1.1.7.100](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.100) |
+| Node | [1.1.25](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.25), based on Remnawave Node 3.4.3 |
+| Core | [1.1.16](https://github.com/lottman/Remnacust-core/releases/tag/v1.1.16), Xray v26.10.31 |
 
 The agent and core have independent versions. Updating the panel does not update remote nodes. The current branch may contain unreleased changes.
 
 ## VPS installation
 
-Installer 1.2.138 supports **Ubuntu 22.04/24.04/26.04 LTS and Debian 12/13**, Linux **amd64/arm64**.
+Installer 1.2.139 supports **Ubuntu 22.04/24.04/26.04 LTS and Debian 12/13**, Linux **amd64/arm64**.
 
 The starting baseline is **1 CPU and 1 GiB RAM**, without a guaranteed user count, connection count or throughput. Resource use depends on transport, rules, encryption and load. VPS deployments use ready Docker images; Node.js and Go are not needed on the host.
 
@@ -86,13 +86,15 @@ A day of offline operation requires enough validity time and local credit for ex
 
 Ordinary Remnawave Node/Xray support standard configurations within their capabilities; they do not automatically gain Remnacust quota, device or recovery extensions. Do not bypass policy checks to install an older core. Xera HTTP (`network: "xera-http"`) requires compatible clients and servers; standard XHTTP is a separate transport. [Compatibility](docs/NODE-COMPATIBILITY.md) · [Limit scopes](https://github.com/lottman/Remnacust-panel/blob/main/docs/HOST-LIMITS.md).
 
-## Node 1.1.24 / Core 1.1.15 changes
+## Node 1.1.25 / Core 1.1.16 changes
 
-Process display names are now `rc-node` and `rc-core` (Core on Linux); the `rw-core` path and management contracts remain compatible. The Core packager rejects incomplete vendored uTLS/olcRTC inputs before writing outputs; Core 1.1.15 is bundled. The previous release's offline recovery fixes remain included, without extending expiry or quotas. [Node changes](docs/RELEASE-1.1.24.md) · [Core changes](https://github.com/lottman/Remnacust-core/blob/main/docs/RELEASE-1.1.15.md).
+Runtime moves to Node.js 26.13 LTS. The image contains custom Core 1.1.16 (`/usr/local/bin/xray`) and stock Xray v26.10.31 (`/usr/local/bin/xray-default`). The panel's global mode defaults to custom. Default is checked before replacing the process and rejects incompatible quotas, policies or live port plans; journals are retained and limits are not silently removed. Changing binaries uses restart and verified rollback and can interrupt connections. A verified managed custom Core is preserved for compatible custom applies.
+
+Process display names are now `rc-node` and `rc-core` (Core on Linux); the `rw-core` path and management contracts remain compatible. The Core packager rejects incomplete vendored uTLS/olcRTC inputs before writing outputs; Core 1.1.16 is bundled. The previous release's offline recovery fixes remain included, without extending expiry or quotas. [Node changes](docs/releases/1.1.25.md) · [Core changes](https://github.com/lottman/Remnacust-core/blob/main/docs/releases/1.1.16.md).
 
 ## Build and documentation
 
-Agent development requires **Node.js 24**; building Core itself requires **Go 1.27.3**. From the repository root:
+Agent development requires **Node.js 26.13 LTS**; building Core itself requires **Go 1.27.3**. From the repository root:
 
 ```bash
 docker build -f node/docker/Dockerfile -t remnacust-node:local node

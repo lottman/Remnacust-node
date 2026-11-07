@@ -117,9 +117,12 @@ export class ManagedCoreStore {
         }
         // A bundled selection follows the replacement image. A rollback snapshot
         // stored by digest remains pinned to its explicitly selected binary.
-        if (this.state.mode === 'bundled' && this.state.binary?.path === this.stock) {
-            const current = await this.identity(this.stock);
-            if (current.sha256 !== this.state.binary.sha256) {
+        if (
+            this.state.mode === 'bundled' &&
+            [this.stock, this.stock + '-default'].includes(this.state.binary?.path ?? '')
+        ) {
+            const current = await this.identity(this.state.binary!.path);
+            if (current.sha256 !== this.state.binary!.sha256) {
                 this.state.binary = current;
                 await this.persist();
             }
@@ -349,10 +352,7 @@ export async function validateCoreConfig(
             if (error.code === 'ENOENT') return false;
             throw error;
         });
-    if (
-        usageRequired &&
-        !(await hasCapability('remnacust-usage-receipts-v1'))
-    )
+    if (usageRequired && !(await hasCapability('remnacust-usage-receipts-v1')))
         throw new Error(
             'This node has durable usage receipts; the selected core cannot preserve their accounting',
         );
@@ -384,10 +384,7 @@ export async function validateCoreConfig(
             throw new Error('Saved host policy cannot be verified before changing the core');
         });
     const userQuotaRequired = await userQuotaRequiredOnDisk();
-    if (
-        policy?.routedIdentities &&
-        !(await hasCapability('remnacust-routed-device-speed-v1'))
-    )
+    if (policy?.routedIdentities && !(await hasCapability('remnacust-routed-device-speed-v1')))
         throw new Error('The selected core cannot preserve routed quota ownership');
     const journal = await readQuotaJournal().catch((error: NodeJS.ErrnoException) => {
         if (error.code === 'ENOENT' && !policy?.offlineReserves) return null;
@@ -452,10 +449,7 @@ export async function validateCoreConfig(
             'This node has active host limits; the selected core does not support their enforcement',
         );
     }
-    if (
-        policy?.offlineReserves &&
-        !(await hasCapability('remnacust-quota-reserves-v1'))
-    )
+    if (policy?.offlineReserves && !(await hasCapability('remnacust-quota-reserves-v1')))
         throw new Error(
             'This node has local quota reserves; the selected core cannot enforce them',
         );

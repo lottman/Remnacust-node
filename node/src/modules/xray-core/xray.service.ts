@@ -1,5 +1,6 @@
 import ems from 'enhanced-ms';
 import { execFile } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { chmod, open, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -36,7 +37,7 @@ import { InternalService } from '../internal/internal.service';
 import { GetInterfaceStatsQuery } from '../network-stats/queries/get-interface-stats/get-interface-stats.query';
 import { restoreCachedCore } from './core-boot-recovery';
 import { CoreCrashWatchdog } from './core-crash-watchdog';
-import { CoreLoaderService } from './core-loader.service';
+import { CoreLoaderService, CoreFlavorTarget } from './core-loader.service';
 import { coreManagement } from './core-management';
 import { GeodataService } from './geodata.service';
 import { LiveCoreService, LIVE_CORE_CHECKPOINT } from './live-core.service';
@@ -166,7 +167,8 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
             supported: () => this.liveCore.supported(this.xrayPath),
             running: async () => (await this.xrayProcess.getStatus()).up,
             start: () => this.xrayProcess.start(),
-            ready: () => this.xrayProcess.recoveryReady(this.xrayPath, this.internal.xtlsApiSocketPath),
+            ready: () =>
+                this.xrayProcess.recoveryReady(this.xrayPath, this.internal.xtlsApiSocketPath),
             cancelled,
         });
     }
@@ -182,6 +184,11 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
         body: StartXrayCommand.Request,
         ip: string,
     ): Promise<TResult<StartXrayResponseModel>> {
+        let flavorResponse: StartXrayResponseModel | undefined;
+        const respond = (response: StartXrayResponseModel) => {
+            flavorResponse = response;
+            return ok(response);
+        };
         const interfaceStats = await this.queryBus.execute(new GetInterfaceStatsQuery());
         const tm = performance.now();
         const system = {
@@ -192,7 +199,7 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
 
         if (this.isXrayStartedProccesing) {
             this.logger.warn('Request already in progress');
-            return ok(
+            return respond(
                 new StartXrayResponseModel(
                     false,
                     this.xrayVersion,
@@ -210,13 +217,78 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
         let requireLiveApply = !!body.internals.requireLiveApply;
         const portPlan = body.internals.portPlan;
         const rawProfileGraphs = body.xrayConfig.remnacustProfileGraphs;
+        let flavorTarget: CoreFlavorTarget | undefined;
+        let flavorRequested = false;
+        let flavorJournal = false;
+        let flavorSucceeded = false;
+        let flavorRestarted = false;
+        let restoreFlavorConfiguration: (() => void) | undefined;
 
         try {
+            const geodata = body.xrayConfig.geodata as Record<string, unknown> | undefined;
+            flavorRequested = geodata?.remnacustCoreFlavor !== undefined;
+            const graphPlan = rawProfileGraphs as
+                | { graphs?: { config?: { geodata?: Record<string, unknown> } }[] }
+                | undefined;
+            if (
+                Array.isArray(graphPlan?.graphs) &&
+                graphPlan.graphs.some(
+                    (graph) =>
+                        graph?.config?.geodata?.remnacustCoreFlavor !== undefined &&
+                        graph?.config?.geodata?.remnacustCoreFlavor !==
+                            geodata?.remnacustCoreFlavor,
+                )
+            )
+                throw new Error('All profile graphs must use the same global core flavor');
+            if (
+                flavorRequested &&
+                Array.isArray(graphPlan?.graphs) &&
+                graphPlan.graphs.some((graph) => graph?.config?.geodata?.core !== undefined)
+            )
+                throw new Error(
+                    'A global core flavor cannot be combined with profile geodata.core',
+                );
+            if (flavorRequested) {
+                flavorTarget = await this.coreLoaderService.inspectFlavor(geodata, body.xrayConfig);
+                const processStatus = await this.xrayProcess.getStatus();
+                preserveRunningCore = processStatus.up;
+                if (processStatus.up) {
+                    if (!processStatus.pid)
+                        throw new Error('The running core identity is unavailable');
+                    const running = await this.managedCore.identity(
+                        `/proc/${processStatus.pid}/exe`,
+                    );
+                    const selected = await this.managedCore.identity();
+                    if (running.sha256 !== selected.sha256)
+                        throw new Error(
+                            'The selected and running core differ; reconcile the managed selection before changing flavor',
+                        );
+                }
+                if ((await this.managedCore.load()).paused)
+                    throw new Error('Core paused by administrator');
+                await this.coreLoaderService.verifyFlavorPolicy(flavorTarget!.binary.path);
+                const torrentBlockerState = await this.queryBus.execute(
+                    new GetTorrentBlockerStateQuery(),
+                );
+                if (flavorTarget!.flavor === 'default' && torrentBlockerState?.enabled)
+                    throw new Error('The Torrent Blocker requires the custom core');
+                const candidateConfig = generateApiConfig({
+                    config: body.xrayConfig,
+                    torrentBlockerState,
+                    internal: this.internal,
+                });
+                await validateCoreConfig(
+                    flavorTarget!.binary.path,
+                    candidateConfig,
+                    this.managedCore.root,
+                );
+            }
+            const capabilityPath = flavorTarget?.binary.path ?? this.xrayPath;
             if (
                 rawProfileGraphs !== undefined &&
                 (!portPlan?.enabled ||
                     !portPlan.delivery ||
-                    !(await this.liveCore.profilesSupported(this.xrayPath)))
+                    !(await this.liveCore.profilesSupported(capabilityPath)))
             )
                 throw new Error(
                     'This profile graph delivery requires a versioned port plan and a compatible core',
@@ -239,10 +311,14 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
                 throw new Error('A port plan cannot request a maintenance restart');
             let liveSupported: boolean | undefined;
             if (requireLiveApply || portPlan?.enabled || savedPortPlan?.required) {
-                liveSupported = await this.liveCore.supported(this.xrayPath);
+                liveSupported = await this.liveCore.supported(capabilityPath);
                 if (!liveSupported)
                     throw new Error(
                         'Update Xray Core: this port plan requires native live application',
+                    );
+                if (flavorTarget?.changed)
+                    throw new Error(
+                        'Resolve the saved live port plan before changing the core flavor',
                     );
                 if (requireLiveApply) {
                     preserveRunningCore = (await this.xrayProcess.getStatus()).up;
@@ -269,7 +345,7 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
 
             if (integrations.error) {
                 this.logger.error(`Failed to sync integrations: ${integrations.error}`);
-                return ok(
+                return respond(
                     new StartXrayResponseModel(
                         false,
                         null,
@@ -284,6 +360,7 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
 
             if (
                 this.isXrayOnline &&
+                !flavorTarget?.changed &&
                 !this.disableHashedSetCheck &&
                 !body.internals.forceRestart &&
                 (!portPlan?.delivery ||
@@ -306,7 +383,7 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
                 if (!shouldRestart) {
                     if (portPlan) await this.portPlans.complete(portPlan, inputsHash);
                     await this.reconciliation?.enroll(body.internals.reconciliation);
-                    return ok(
+                    return respond(
                         new StartXrayResponseModel(
                             true,
                             this.xrayVersion,
@@ -382,7 +459,7 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
                 );
 
             if ((await this.managedCore.load()).paused) {
-                return ok(
+                return respond(
                     new StartXrayResponseModel(
                         false,
                         this.xrayVersion,
@@ -393,6 +470,11 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
                 );
             }
 
+            if (flavorTarget?.changed) {
+                restoreFlavorConfiguration = this.internalService.snapshotConfiguration();
+                flavorJournal = await this.managedCore.begin(randomUUID(), 'bundled');
+                if (!flavorJournal) throw new Error('Core flavor operation could not be journaled');
+            }
             await this.coreLoaderService.prepare(fullConfig.geodata);
             await this.geodataService.prepare(fullConfig.geodata);
             if (profileInput) {
@@ -407,7 +489,12 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
                 throw new Error(
                     'The running core is not ready for live application; its process was preserved',
                 );
-            if (this.isXrayOnline && liveSupported && !body.internals.forceRestart) {
+            if (
+                this.isXrayOnline &&
+                !flavorTarget?.changed &&
+                liveSupported &&
+                !body.internals.forceRestart
+            ) {
                 let replay = false;
                 if (profileInput) {
                     const acknowledgement = await this.liveCore.applyProfiles(
@@ -426,17 +513,25 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
                         );
                 } else {
                     const restarted = await applyRuntimeUpdate({
-                        apply: () => this.liveCore.apply(this.xrayPath, this.internal.xtlsApiSocketPath, fullConfig),
+                        apply: () =>
+                            this.liveCore.apply(
+                                this.xrayPath,
+                                this.internal.xtlsApiSocketPath,
+                                fullConfig,
+                            ),
                         requireLiveApply,
                         checkpoint: LIVE_CORE_CHECKPOINT,
-                        validate: () => validateCoreConfig(this.xrayPath, fullConfig, this.managedCore.root),
+                        validate: () =>
+                            validateCoreConfig(this.xrayPath, fullConfig, this.managedCore.root),
                         prepare: () => this.liveCore.prepareRestart(this.xrayPath, fullConfig),
                         restart: async () => {
                             this.isXrayOnline = false;
                             const result = await this.restartXrayProcess();
-                            if (result.error) throw new Error('Listener replacement process failed to start');
+                            if (result.error)
+                                throw new Error('Listener replacement process failed to start');
                             const readiness = await this.getXrayInternalStatus();
-                            if (!readiness.isStarted) throw new Error('Listener replacement readiness check failed');
+                            if (!readiness.isStarted)
+                                throw new Error('Listener replacement readiness check failed');
                             this.isXrayOnline = true;
                         },
                         stop: async () => {
@@ -445,7 +540,9 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
                         },
                     });
                     if (restarted) {
-                        this.logger.warn('Listener settings changed; Xray was validated and restarted automatically');
+                        this.logger.warn(
+                            'Listener settings changed; Xray was validated and restarted automatically',
+                        );
                         await this.refreshXrayVersion();
                     }
                 }
@@ -456,7 +553,7 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
                 if (portPlan) await this.portPlans.complete(portPlan, inputsHash);
                 await this.reconciliation?.enroll(body.internals.reconciliation);
                 this.watchdog?.arm();
-                return ok(
+                return respond(
                     new StartXrayResponseModel(
                         true,
                         this.xrayVersion,
@@ -475,12 +572,13 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
             }
             if (!profileInput) await rememberConfiguration();
 
+            flavorRestarted = !!flavorTarget?.changed;
             const xrayProcess = await this.restartXrayProcess();
 
             if (xrayProcess.error) {
                 this.logger.error(`Failed to (re)start Xray process via s6: ${xrayProcess.error}`);
 
-                return ok(
+                return respond(
                     new StartXrayResponseModel(
                         false,
                         null,
@@ -504,7 +602,7 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
                 const tail = await this.dumpTailBlock(XRAY_LOG_FILE, 5);
                 const logReason = tail.at(-1)?.trim().slice(0, 500);
 
-                return ok(
+                return respond(
                     new StartXrayResponseModel(
                         isStarted,
                         this.xrayVersion,
@@ -529,7 +627,8 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
             if (portPlan) await this.portPlans.complete(portPlan, inputsHash);
             await this.reconciliation?.enroll(body.internals.reconciliation);
 
-            return ok(
+            flavorSucceeded = true;
+            return respond(
                 new StartXrayResponseModel(
                     isStarted,
                     this.xrayVersion,
@@ -548,10 +647,11 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
 
             this.logger.error(`Failed to start Xray: ${errorMessage}`);
 
-            return ok(
+            return respond(
                 new StartXrayResponseModel(
-                    requireLiveApply && (this.isXrayOnline || preserveRunningCore),
-                    requireLiveApply ? this.xrayVersion : null,
+                    (requireLiveApply || flavorRequested) &&
+                        (this.isXrayOnline || preserveRunningCore),
+                    requireLiveApply || flavorRequested ? this.xrayVersion : null,
                     errorMessage,
                     {
                         version: this.nodeVersion,
@@ -560,14 +660,67 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
                 ),
             );
         } finally {
+            if (
+                flavorJournal &&
+                !(await this.finishFlavorTransition(
+                    flavorSucceeded,
+                    flavorRestarted,
+                    preserveRunningCore,
+                    restoreFlavorConfiguration,
+                )) &&
+                flavorResponse
+            ) {
+                flavorResponse.isStarted = false;
+                flavorResponse.version = null;
+                flavorResponse.error = 'Core flavor recovery failed; public listeners were stopped';
+            }
             this.logger.log(
                 `Attempt to start XTLS took: ${ems(performance.now() - tm, {
-                    extends: 'short',
+                    useAbbreviations: true,
+                    unitLimit: 2,
                     includeMs: true,
                 })} (IP: ${ip})`,
             );
 
             this.isXrayStartedProccesing = false;
+        }
+    }
+
+    private async finishFlavorTransition(
+        succeeded: boolean,
+        restarted: boolean,
+        preserveRunningCore: boolean,
+        restoreConfiguration?: () => void,
+    ): Promise<boolean> {
+        try {
+            if (succeeded) await this.managedCore.finish('succeeded');
+            else {
+                restoreConfiguration?.();
+                await this.managedCore.restore();
+                if (restarted) {
+                    if (preserveRunningCore) {
+                        const restored = await this.restartXrayProcess();
+                        if (restored.error) throw new Error('Core flavor recovery failed');
+                        this.isXrayOnline = (await this.getXrayInternalStatus()).isStarted;
+                        if (!this.isXrayOnline) throw new Error('Core flavor recovery failed');
+                    } else {
+                        await this.xrayProcess.stop();
+                        this.isXrayOnline = false;
+                    }
+                    await this.refreshXrayVersion();
+                }
+                await this.managedCore.finish(
+                    'rolled-back',
+                    'Core flavor transition failed; previous selection restored',
+                );
+            }
+            return true;
+        } catch {
+            this.isXrayOnline = false;
+            this.watchdog?.disarm();
+            await this.xrayProcess.stop().catch(() => undefined);
+            this.logger.error('Core flavor recovery failed; public listeners were stopped');
+            return false;
         }
     }
 
@@ -623,6 +776,7 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
         const selected = await this.managedCore.identity().catch(() => null);
         return {
             capabilityVersion: 1,
+            ...(await this.coreLoaderService.flavors(selected, running)),
             platform: process.platform,
             arch: process.arch === 'x64' ? 'amd64' : process.arch,
             mode: state.mode,
@@ -758,9 +912,23 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
                     await this.coreLoaderService.prepare(
                         profileInput?.graphs[0]?.config.geodata ?? config.geodata,
                     );
+                    selection = await this.managedCore.load();
                 }
                 await this.managedCore.phase('validating');
                 const binary = selection.binary?.path ?? this.managedCore.link;
+                const geodata = (profileInput?.graphs[0]?.config.geodata ?? config.geodata) as
+                    | Record<string, unknown>
+                    | undefined;
+                if (geodata?.remnacustCoreFlavor !== undefined) {
+                    if (
+                        !(await this.coreLoaderService.acceptsFlavor(
+                            geodata,
+                            await this.managedCore.identity(binary),
+                        ))
+                    )
+                        throw new Error('The managed action conflicts with the global core flavor');
+                    await this.coreLoaderService.verifyFlavorPolicy(binary);
+                }
                 if (profileInput) {
                     await this.liveCore.validateProfiles(binary, profileInput);
                     for (const graph of profileInput.graphs)
@@ -911,7 +1079,8 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
                             `▸ XRay Core status check, ${context.attemptNumber}/${context.attemptNumber + context.retriesLeft} · elapsed ${ems(
                                 performance.now() - tm,
                                 {
-                                    extends: 'short',
+                                    useAbbreviations: true,
+                                    unitLimit: 2,
                                     includeMs: true,
                                 },
                             )} · retrying in ${context.retryDelay}ms`,

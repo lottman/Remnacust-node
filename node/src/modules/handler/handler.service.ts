@@ -469,7 +469,8 @@ export class HandlerService implements OnModuleInit {
             this.logger.log(
                 'Users addition took: ' +
                     ems(performance.now() - tm, {
-                        extends: 'short',
+                        useAbbreviations: true,
+            unitLimit: 2,
                         includeMs: true,
                     }),
             );
@@ -546,7 +547,8 @@ export class HandlerService implements OnModuleInit {
             this.logger.log(
                 'Users removal took: ' +
                     ems(performance.now() - tm, {
-                        extends: 'short',
+                        useAbbreviations: true,
+            unitLimit: 2,
                         includeMs: true,
                     }),
             );

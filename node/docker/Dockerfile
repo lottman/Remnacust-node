@@ -1,10 +1,12 @@
 # BuildKit is required for cache mounts.
 
-FROM node:24.22.1-trixie-slim AS build
+FROM node:26.13.0-trixie-slim AS build
 
 WORKDIR /opt/app
 
 COPY package*.json ./
+COPY scripts ./scripts
+COPY patches ./patches
 RUN npm ci --prefer-offline --no-audit --no-fund
 
 COPY . .
@@ -96,7 +98,7 @@ FROM scratch AS integration-bin
 FROM alpine:3.21 AS certificates
 RUN apk add --no-cache ca-certificates
 
-FROM node:24.22.1-trixie-slim
+FROM node:26.13.0-trixie-slim
 COPY --from=certificates /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 ARG S6_OVERLAY_VERSION=3.2.3.2
@@ -115,6 +117,7 @@ WORKDIR /opt/app
 COPY --from=build /opt/app/dist ./dist
 
 COPY --from=xray-device-build /tmp/xray /usr/local/bin/xray
+COPY --from=xray /usr/local/bin/xray /usr/local/bin/xray-default
 COPY --from=xray /usr/local/share/xray/geoip.dat /usr/local/share/xray/geoip.dat
 COPY --from=xray /usr/local/share/xray/geosite.dat /usr/local/share/xray/geosite.dat
 COPY --from=asn /usr/local/share/asn /usr/local/share/asn

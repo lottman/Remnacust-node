@@ -1,3 +1,5 @@
+import type { ProfileInput } from '../xray-core/profile-input';
+
 import { getSemaphore } from '@henrygd/semaphore';
 import ems from 'enhanced-ms';
 import pMap from 'p-map';
@@ -7,7 +9,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HashedSet } from '@remnawave/hashed-set';
 
 import { StartXrayCommand } from '@libs/contracts/commands';
-import type { ProfileInput } from '../xray-core/profile-input';
 
 @Injectable()
 export class InternalService {
@@ -22,8 +23,12 @@ export class InternalService {
     private profileInput: ProfileInput | null = null;
     private configurationReady = false;
 
-    public hasConfiguration(): boolean { return this.configurationReady; }
-    public hasProfileBindings(): boolean { return this.profileInput !== null; }
+    public hasConfiguration(): boolean {
+        return this.configurationReady;
+    }
+    public hasProfileBindings(): boolean {
+        return this.profileInput !== null;
+    }
 
     public getProfileInput(): ProfileInput | null {
         return this.profileInput ? structuredClone(this.profileInput) : null;
@@ -43,6 +48,23 @@ export class InternalService {
         this.xrayConfig = config;
     }
 
+    public snapshotConfiguration(): () => void {
+        const state = {
+            xrayConfig: structuredClone(this.xrayConfig),
+            emptyConfigHash: this.emptyConfigHash,
+            inboundsHashMap: new Map(this.inboundsHashMap),
+            xtlsConfigInbounds: new Set(this.xtlsConfigInbounds),
+            profileBindings: new Map(
+                [...this.profileBindings].map(([key, value]) => [key, [...value]]),
+            ),
+            profileInput: structuredClone(this.profileInput),
+            configurationReady: this.configurationReady,
+        };
+        return () => {
+            Object.assign(this, state);
+        };
+    }
+
     public async extractUsersFromConfig(
         hashes: StartXrayCommand.Request['internals']['hashes'],
         newConfig: Record<string, unknown>,
@@ -53,11 +75,17 @@ export class InternalService {
         const seen = new Set<string>();
         if (profileBindings.length > 512) throw new Error('Too many profile bindings');
         for (const binding of profileBindings) {
-            if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(binding.bindingUuid) ||
-                typeof binding.inboundTag !== 'string' || !binding.inboundTag ||
-                binding.inboundTag.length > 200 || seen.has(binding.bindingUuid) ||
+            if (
+                !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+                    binding.bindingUuid,
+                ) ||
+                typeof binding.inboundTag !== 'string' ||
+                !binding.inboundTag ||
+                binding.inboundTag.length > 200 ||
+                seen.has(binding.bindingUuid) ||
                 !Array.isArray(newConfig.inbounds) ||
-                !newConfig.inbounds.some(inbound => inbound?.tag === binding.inboundTag))
+                !newConfig.inbounds.some((inbound) => inbound?.tag === binding.inboundTag)
+            )
                 throw new Error('Invalid profile binding index');
             seen.add(binding.bindingUuid);
             const matches = index.get(binding.inboundTag) ?? [];
@@ -119,7 +147,8 @@ export class InternalService {
         }
 
         const result = ems(performance.now() - start, {
-            extends: 'short',
+            useAbbreviations: true,
+            unitLimit: 2,
             includeMs: true,
         });
 
@@ -174,7 +203,8 @@ export class InternalService {
             return true;
         } finally {
             const result = ems(performance.now() - start, {
-                extends: 'short',
+                useAbbreviations: true,
+                unitLimit: 2,
                 includeMs: true,
             });
             this.logger.log(`Configuration hash check completed in ${result ? result : '0ms'}`);

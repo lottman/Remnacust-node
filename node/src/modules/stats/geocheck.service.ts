@@ -72,7 +72,8 @@ export class GeocheckService {
 
             this.logger.log(
                 `Geocheck via ${target} took ${ems(performance.now() - tm, {
-                    extends: 'short',
+                    useAbbreviations: true,
+            unitLimit: 2,
                     includeMs: true,
                 })}`,
             );

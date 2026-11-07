@@ -8,16 +8,16 @@
 
 | Компонент | Версия |
 | --- | --- |
-| Installer | [1.2.138](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.138) |
-| Панель и страница подписки | [1.1.7.99](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.99) |
-| Node | [1.1.24](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.24), основа Remnawave Node 3.4.3 |
-| Core | [1.1.15](https://github.com/lottman/Remnacust-core/releases/tag/v1.1.15), Xray v26.10.31 |
+| Installer | [1.2.139](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.139) |
+| Панель и страница подписки | [1.1.7.100](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.100) |
+| Node | [1.1.25](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.25), основа Remnawave Node 3.4.3 |
+| Core | [1.1.16](https://github.com/lottman/Remnacust-core/releases/tag/v1.1.16), Xray v26.10.31 |
 
 Версии агента и ядра независимы. Обновление панели не обновляет удалённую ноду. Текущая ветка может содержать ещё не выпущенные изменения.
 
 ## Установка на VPS
 
-Installer 1.2.138 поддерживает **Ubuntu 22.04/24.04/26.04 LTS и Debian 12/13**, Linux **amd64/arm64**.
+Installer 1.2.139 поддерживает **Ubuntu 22.04/24.04/26.04 LTS и Debian 12/13**, Linux **amd64/arm64**.
 
 Начальный ориентир — **1 CPU и 1 GiB RAM**, без гарантии числа пользователей, соединений или пропускной способности. Расход ресурсов зависит от транспорта, правил, шифрования и нагрузки. На VPS используются готовые Docker-образы; Node.js и Go на хосте не нужны.
 
@@ -86,13 +86,15 @@ sudo remnacust restart --component node
 
 Обычные Remnawave Node/Xray совместимы со стандартными конфигурациями в пределах своих возможностей; они не получают автоматически расширения Remnacust для квот, устройств и восстановления. Не обходите проверки политик для установки старого ядра. Xera HTTP (`network: "xera-http"`) требует совместимых клиента и сервера; стандартный XHTTP — отдельный транспорт. [Совместимость](docs/NODE-COMPATIBILITY.md) · [Области лимитов](https://github.com/lottman/Remnacust-panel/blob/main/docs/HOST-LIMITS.md).
 
-## Изменения Node 1.1.24 / Core 1.1.15
+## Изменения Node 1.1.25 / Core 1.1.16
 
-Отображаемые имена процессов — `rc-node` и `rc-core` (Core в Linux); путь `rw-core` и контракты управления сохранены. Упаковщик Core отклоняет неполный vendored uTLS/olcRTC до записи выходных файлов; встроен Core 1.1.15. Исправления автономного восстановления из предыдущего выпуска сохранены, сроки и квоты не продлеваются. [Изменения Node](docs/RELEASE-1.1.24.md) · [Изменения Core](https://github.com/lottman/Remnacust-core/blob/main/docs/RELEASE-1.1.15.md).
+Runtime обновлён до Node.js 26.13 LTS. Образ содержит custom Core 1.1.16 (`/usr/local/bin/xray`) и штатный Xray v26.10.31 (`/usr/local/bin/xray-default`). Глобальный режим панели по умолчанию — custom. Default проверяется до изменения процесса и отклоняется при несовместимых квотах, политиках или live port plans; журналы не удаляются и ограничения не снимаются. Смена binary требует restart с проверкой rollback и может прервать соединения. Проверенное managed custom-ядро сохраняется при совместимом custom-применении.
+
+Отображаемые имена процессов — `rc-node` и `rc-core` (Core в Linux); путь `rw-core` и контракты управления сохранены. Упаковщик Core отклоняет неполный vendored uTLS/olcRTC до записи выходных файлов; встроен Core 1.1.16. Исправления автономного восстановления из предыдущего выпуска сохранены, сроки и квоты не продлеваются. [Изменения Node](docs/releases/1.1.25.md) · [Изменения Core](https://github.com/lottman/Remnacust-core/blob/main/docs/releases/1.1.16.md).
 
 ## Сборка и документация
 
-Разработка агента требует **Node.js 24**, сборка самого Core — **Go 1.27.3**. Из корня репозитория:
+Разработка агента требует **Node.js 26.13 LTS**, сборка самого Core — **Go 1.27.3**. Из корня репозитория:
 
 ```bash
 docker build -f node/docker/Dockerfile -t remnacust-node:local node

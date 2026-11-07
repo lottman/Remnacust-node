@@ -1,7 +1,7 @@
 #!/command/with-contenv sh
 
 exec 2>&1
-node /etc/s6-overlay/scripts/core-boot.cjs
+node /etc/s6-overlay/scripts/core-boot.cjs --service-start
 selection_status=$?
 case "$selection_status" in
     0) ;;

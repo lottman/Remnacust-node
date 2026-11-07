@@ -24,7 +24,8 @@ export class PreStartService {
 
         this.logger.log(
             `[PRE-START] Stage completed in ${ems(performance.now() - tm, {
-                extends: 'short',
+                useAbbreviations: true,
+            unitLimit: 2,
                 includeMs: true,
             })}`,
         );
