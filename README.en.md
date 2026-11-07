@@ -8,7 +8,7 @@ The Remnacust agent receives panel configuration, manages Xray and reports stati
 
 | Component | Version |
 | --- | --- |
-| Installer | [1.2.140](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.140) |
+| Installer | [1.2.141](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.141) |
 | Panel and subscription page | [1.1.7.101](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.101) |
 | Node | [1.1.26](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.26), based on Remnawave Node 3.4.3 |
 | Core | [1.1.16](https://github.com/lottman/Remnacust-core/releases/tag/v1.1.16), Xray v26.10.31 |
@@ -17,7 +17,7 @@ The agent and core have independent versions. Updating the panel does not update
 
 ## VPS installation
 
-Installer 1.2.140 supports **Ubuntu 22.04/24.04/26.04 LTS and Debian 12/13**, Linux **amd64/arm64**.
+Installer 1.2.141 supports **Ubuntu 22.04/24.04/26.04 LTS and Debian 12/13**, Linux **amd64/arm64**.
 
 The starting baseline is **1 CPU and 1 GiB RAM**, without a guaranteed user count, connection count or throughput. Resource use depends on transport, rules, encryption and load. VPS deployments use ready Docker images; Node.js and Go are not needed on the host.
 
