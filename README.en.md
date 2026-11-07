@@ -24,11 +24,11 @@ The starting baseline is **1 CPU and 1 GiB RAM**, without a guaranteed user coun
 Create a node in the panel and obtain its connection key:
 
 ```bash
-curl -fsSL --proto '=https' --proto-redir '=https' \
-  https://github.com/lottman/Remnacust-installer/releases/download/v1.2.138/installer.sh \
-  -o installer.sh
-sudo bash installer.sh install-node --version 1.2.138
+curl -fsSLo installer.sh https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh
+sudo bash installer.sh install-node
 ```
+
+The command downloads the latest stable installer. Press Enter at the version prompt to select Latest; `--version` is only needed to pin a specific release.
 
 Enter the key and API port (default `2222`); the panel setting must match. For client traffic, separately assign a profile, enable an inbound, allow it for a squad and create a host with the required address and port.
 

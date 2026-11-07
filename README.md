@@ -24,11 +24,11 @@ Installer 1.2.138 поддерживает **Ubuntu 22.04/24.04/26.04 LTS и Deb
 Создайте ноду в панели и получите ключ подключения:
 
 ```bash
-curl -fsSL --proto '=https' --proto-redir '=https' \
-  https://github.com/lottman/Remnacust-installer/releases/download/v1.2.138/installer.sh \
-  -o installer.sh
-sudo bash installer.sh install-node --version 1.2.138
+curl -fsSLo installer.sh https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh
+sudo bash installer.sh install-node
 ```
+
+Команда скачивает последний стабильный установщик. В вопросе о версии нажмите Enter для Latest; `--version` нужен только для выбора конкретного выпуска.
 
 Укажите ключ и API-порт (по умолчанию `2222`); порт в панели должен совпадать. Для клиентского трафика отдельно назначьте профиль, включите inbound, разрешите его скваду и создайте хост с нужным адресом и портом.
 
