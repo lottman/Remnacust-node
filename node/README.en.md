@@ -9,7 +9,7 @@ Agent **1.1.26** is based on Remnawave Node 3.4.3. Coordinated components are In
 Download the latest stable installer and open its interactive menu:
 
 ```bash
-curl -fsSLo installer.sh https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh && sudo bash installer.sh
+bash <(curl -fsSL https://raw.githubusercontent.com/lottman/Remnacust-installer/main/bootstrap.sh) @ install
 ```
 
 ## For operators
