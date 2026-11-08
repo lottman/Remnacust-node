@@ -24,7 +24,7 @@ The starting baseline is **1 CPU and 1 GiB RAM**, without a guaranteed user coun
 Create a node in the panel and obtain its connection key:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/lottman/Remnacust-installer/main/bootstrap.sh) @ install-node
+bash <(curl -fsSL https://raw.githubusercontent.com/lottman/Remnacust-installer/main/Install.sh) @ install-node
 ```
 
 The command downloads the latest stable installer. Press Enter at the version prompt to select Latest; `--version` is only needed to pin a specific release.

@@ -24,7 +24,7 @@ Installer 1.2.144 поддерживает **Ubuntu 22.04/24.04/26.04 LTS и Deb
 Создайте ноду в панели и получите ключ подключения:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/lottman/Remnacust-installer/main/bootstrap.sh) @ install-node
+bash <(curl -fsSL https://raw.githubusercontent.com/lottman/Remnacust-installer/main/Install.sh) @ install-node
 ```
 
 Команда скачивает последний стабильный установщик. В вопросе о версии нажмите Enter для Latest; `--version` нужен только для выбора конкретного выпуска.
