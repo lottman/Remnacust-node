@@ -336,7 +336,14 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
             if (portPlan) await this.portPlans.begin(portPlan);
             if (!this.isXrayOnline && !body.internals.forceRestart) {
                 const status = await this.xrayProcess.getStatus();
-                if (status.up) this.isXrayOnline = (await this.xtlsSdk.stats.getSysStats()).isOk;
+                if (status.up) {
+                    preserveRunningCore = true;
+                    if (!(await this.xtlsSdk.stats.getSysStats()).isOk)
+                        throw new Error('Core management API is temporarily unavailable; the running process was preserved');
+                    this.isXrayOnline = true;
+                } else if (!status.raw) {
+                    throw new Error('Core process state is unavailable; automatic restart was refused');
+                }
             }
             const integrations = await this.integrations.sync(
                 body.internals.integrations,
@@ -374,10 +381,15 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
                 if (isOk) {
                     shouldRestart = this.internalService.isNeedRestartCore(body.internals.hashes);
                 } else {
+                    const processStatus = await this.xrayProcess.getStatus();
+                    if (processStatus.up)
+                        throw new Error('Core management API is temporarily unavailable; the running process was preserved');
+                    if (!processStatus.raw)
+                        throw new Error('Core process state is unavailable; automatic restart was refused');
                     this.isXrayOnline = false;
                     shouldRestart = true;
 
-                    this.logger.warn(`Xray Core health check failed, restarting...`);
+                    this.logger.warn('The core process is stopped; restoring its configuration');
                 }
 
                 if (!shouldRestart) {
@@ -646,12 +658,18 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
             }
 
             this.logger.error(`Failed to start Xray: ${errorMessage}`);
+            let retainedRunningCore = false;
+            try {
+                retainedRunningCore = (await this.xrayProcess.getStatus()).up;
+            } catch {
+                retainedRunningCore = false;
+            }
+            this.isXrayOnline = retainedRunningCore;
 
             return respond(
                 new StartXrayResponseModel(
-                    (requireLiveApply || flavorRequested) &&
-                        (this.isXrayOnline || preserveRunningCore),
-                    requireLiveApply || flavorRequested ? this.xrayVersion : null,
+                    retainedRunningCore,
+                    retainedRunningCore ? this.xrayVersion : null,
                     errorMessage,
                     {
                         version: this.nodeVersion,

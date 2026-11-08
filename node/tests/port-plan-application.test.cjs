@@ -31,7 +31,7 @@ function fixture(checkpoint='/fixture/checkpoint.pb'){
         logger:{log(){},warn(){},error(){}},internal:{xtlsApiSocketPath:'/fixture/api.sock'},isXrayOnline:true,isXrayStartedProccesing:false,disableHashedSetCheck:false,xrayPath:'/fixture-core',xrayVersion:'fixture',nodeVersion:'fixture',
         integrations:{sync:async()=>{state.calls.push('integrations');return {}; }},managedCore:{load:async()=>({paused:false})},
         internalService:{isNeedRestartCore:()=>true,hasConfiguration:()=>state.known!==false,hasProfileBindings:()=>!!state.profileInput,getProfileInput:()=>state.profileInput??null,extractUsersFromConfig:async(hashes,config,bindings,input)=>{state.calls.push('users');state.userConfig=config;state.bindings=bindings;state.profileInput=input;}},
-        xtlsSdk:{stats:{getSysStats:async()=>({isOk:state.stats})}},xrayProcess:{getStatus:async()=>({up:state.up})},
+        xtlsSdk:{stats:{getSysStats:async()=>({isOk:state.stats})}},xrayProcess:{getStatus:async()=>({up:state.up,raw:state.raw??(state.up?'true 42':'false -1')})},
         liveCore:{supported:async()=>{state.calls.push('capability');return state.supported;},profilesSupported:async()=>state.graphSupported!==false,
             apply:async()=>{state.calls.push('apply');if(state.applyError)throw state.applyError instanceof Error?state.applyError:Error(state.applyError);},prepareRestart:async()=>state.calls.push('checkpoint'),
             applyProfiles:async(binary,socket,input)=>{state.calls.push('apply-profiles');if(state.applyError)throw Error(state.applyError);state.nativeInput=input;return {unchanged:state.replay??false};},
@@ -214,4 +214,34 @@ test('cold profile start prepares the complete manifest and waits for core readi
     assert.ok(f.state.calls.includes('checkpoint-profiles'));
     assert.ok(f.state.calls.indexOf('users')>f.state.calls.indexOf('restart'));
     assert.equal(f.state.calls.includes('checkpoint'),false);
+});
+
+test('ordinary synchronization preserves a running core when its stats API is temporarily unavailable', async()=>{
+    for (const cachedOnline of [true,false]) {
+        const f=fixture();f.request.internals.requireLiveApply=undefined;
+        f.service.isXrayOnline=cachedOnline;f.state.stats=false;
+        const result=await f.run();
+        assert.equal(result.response.isStarted,true);
+        assert.match(result.response.error,/temporarily unavailable/);
+        for(const action of ['apply','checkpoint','restart','users','enroll'])assert.equal(f.state.calls.includes(action),false,action);
+    }
+});
+
+test('unknown supervisor state never authorizes an implicit core restart',async()=>{
+    const f=fixture();f.request.internals.requireLiveApply=undefined;
+    f.state.up=false;f.state.raw='';f.state.stats=false;
+    const result=await f.run();
+    assert.ok(result.response.error);
+    assert.equal(f.state.calls.includes('restart'),false);
+});
+
+test('a refused global settings update reports the retained running core without acknowledging the new config',async()=>{
+    const f=fixture();f.request.internals.requireLiveApply=undefined;
+    f.state.applyError='Global core settings changed; preserve current sessions and apply this change during an explicit maintenance restart';
+    const result=await f.run();
+    assert.equal(result.response.isStarted,true);
+    assert.equal(result.response.version,'fixture');
+    assert.match(result.response.error,/Global core settings changed/);
+    assert.equal(f.state.calls.includes('apply'),true);
+    for(const action of ['checkpoint','restart','users','enroll'])assert.equal(f.state.calls.includes(action),false,action);
 });
