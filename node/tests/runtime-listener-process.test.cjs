@@ -65,13 +65,15 @@ test('a real core accepts port and transport updates, preserves unchanged PID an
     const restart = async () => {
         await stop();
         starts++;
-        const child = spawn(binary, ['-runtime-cache', checkpoint], { stdio: ['ignore', 'ignore', 'pipe'] });
+        const child = spawn(binary, ['-runtime-cache', checkpoint], { stdio: ['ignore', 'pipe', 'pipe'] });
         process = child;
         let output = '';
-        child.stderr.on('data', data => { if (output.length < 16000) output += data; });
+        for (const stream of [child.stdout, child.stderr]) stream.on('data', data => { if (output.length < 16000) output += data; });
         for (let attempt = 0; attempt < 40; attempt++) {
             if (child.exitCode !== null || child.signalCode !== null) throw new Error('Native test core failed to start: ' + output.slice(-1000));
-            try { await invoke(['api', 'statsquery', `--server=127.0.0.1:${apiPort}`, '--timeout=1']); return; } catch {}
+            if (/Xray [^\r\n]* started/.test(output)) {
+                try { await invoke(['api', 'statsquery', `--server=127.0.0.1:${apiPort}`, '--timeout=1']); return; } catch {}
+            }
             await new Promise(resolve => setTimeout(resolve, 100));
         }
         throw new Error('Native test core readiness failed: ' + output.slice(-1000));
@@ -82,7 +84,7 @@ test('a real core accepts port and transport updates, preserves unchanged PID an
         assert.deepEqual(await exchange(port, request, 6), Buffer.from([0, 0, 112, 105, 110, 103]));
     };
     current = {
-        log: { loglevel: 'none' }, stats: {},
+        log: { loglevel: 'warning' }, stats: {},
         api: { tag: 'CONTROL', listen: `127.0.0.1:${apiPort}`, services: ['HandlerService', 'StatsService'] },
         inbounds: [{ tag: 'YandexCDN-RU1', listen: '127.0.0.1', port: initialPort, protocol: 'vless', settings: { decryption: 'none', clients: [{ id: uuid, email: 'listener-fixture' }] } }],
         outbounds: [{ tag: 'direct', protocol: 'freedom', settings: { finalRules: [{ action: 'allow', ip: ['127.0.0.1/32'] }] } }],
