@@ -8,7 +8,7 @@
 
 | Компонент | Версия |
 | --- | --- |
-| Installer | [1.2.143](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.143) |
+| Installer | [1.2.144](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.144) |
 | Панель и страница подписки | [1.1.7.100](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.100) |
 | Node | [1.1.26](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.26), основа Remnawave Node 3.4.3 |
 | Core | [1.1.16](https://github.com/lottman/Remnacust-core/releases/tag/v1.1.16), Xray v26.10.31 |
@@ -17,15 +17,14 @@
 
 ## Установка на VPS
 
-Installer 1.2.143 поддерживает **Ubuntu 22.04/24.04/26.04 LTS и Debian 12/13**, Linux **amd64/arm64**.
+Installer 1.2.144 поддерживает **Ubuntu 22.04/24.04/26.04 LTS и Debian 12/13**, Linux **amd64/arm64**.
 
 Начальный ориентир — **1 CPU и 1 GiB RAM**, без гарантии числа пользователей, соединений или пропускной способности. Расход ресурсов зависит от транспорта, правил, шифрования и нагрузки. На VPS используются готовые Docker-образы; Node.js и Go на хосте не нужны.
 
 Создайте ноду в панели и получите ключ подключения:
 
 ```bash
-curl -fsSLo installer.sh https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh
-sudo bash installer.sh install-node
+curl -fsSLo installer.sh https://github.com/lottman/Remnacust-installer/releases/latest/download/installer.sh && sudo bash installer.sh install-node
 ```
 
 Команда скачивает последний стабильный установщик. В вопросе о версии нажмите Enter для Latest; `--version` нужен только для выбора конкретного выпуска.
