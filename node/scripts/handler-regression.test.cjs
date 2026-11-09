@@ -10,8 +10,9 @@ const output = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/m
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, experimentalDecorators: true },
 }).outputText;
 new Function('require', 'module', 'exports', output)((id) => {
+    if (id === './profile-user-handler') return require('../tests/load-typescript.cjs')(path.join(__dirname, '../src/modules/handler/profile-user-handler.ts'), { './masque-user': { addMasqueUser: (api, data) => api.handler.addMasqueUser(data) } });
     if (id === '../xray-core/core-management') return require('../tests/load-typescript.cjs')(path.join(__dirname, '../src/modules/xray-core/core-management.ts'));
-    if (id === 'enhanced-ms') return { default: () => '' };
+    if (id === 'enhanced-ms') return () => '';
     if (id === '@nestjs/common') return { Injectable: () => (value) => value, Logger: class { log() {} debug() {} error() {} } };
     if (id === '@remnawave/xtls-sdk-nestjs') return { InjectXtls: () => () => {} };
     if (id === '@common/types') return { ok: (response) => ({ isOk: true, response }), fail: (error) => ({ isOk: false, error }) };
@@ -26,6 +27,8 @@ function fixture({ removeFails = false, addFails = false, oldTags = ['old', 'new
     const present = new Set(oldTags);
     const calls = [];
     const state = {
+        hasConfiguration: () => true,
+        getProfileBindingsForTag: () => [],
         addXtlsConfigInbound() {}, getXtlsConfigInbounds: () => new Set(['old', 'new']),
         hasUserInInbound: (tag) => present.has(tag),
         removeUserFromInbound: async (tag) => { calls.push(['cache-remove', tag]); present.delete(tag); },

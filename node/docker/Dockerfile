@@ -22,8 +22,8 @@ RUN npm run build \
 
 FROM golang:1.27.3-alpine AS xray-device-build
 
-ARG XRAY_CORE_VERSION=v26.10.31
-ARG XRAY_CORE_COMMIT=a4a3dff5b20c2faae567b742c172c7b95e75c083
+ARG XRAY_CORE_VERSION=v26.11.9
+ARG XRAY_CORE_COMMIT=676eaf66f8f05d4d558ee7a74b4736623d3feeb9
 RUN apk add --no-cache git
 COPY docker/remnacust-core.tar.gz docker/remnacust-core.tar.gz.sha256 /tmp/
 RUN cd /tmp && sha256sum -c remnacust-core.tar.gz.sha256 \
@@ -41,7 +41,7 @@ RUN go test github.com/refraction-networking/utls -run '^TestRemnacustCertificat
 
 FROM alpine:3.21 AS xray
 
-ARG XRAY_CORE_VERSION=v26.10.31
+ARG XRAY_CORE_VERSION=v26.11.9
 ARG UPSTREAM_REPO=XTLS
 ARG TARGETARCH
 
