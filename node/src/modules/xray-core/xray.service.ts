@@ -86,6 +86,7 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
 
     private xrayVersion: null | string = null;
     private isXrayOnline: boolean = false;
+    private restoredUnclaimedConfiguration = false;
     private isXrayStartedProccesing: boolean = false;
     private nodeVersion: string = '0.0.0';
     private readonly watchdog = new CoreCrashWatchdog({
@@ -147,6 +148,7 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
                 const paused = (await this.managedCore.load()).paused;
                 if (paused) await this.xrayProcess.stop();
                 this.isXrayOnline = await this.restoreCoreCheckpoint();
+                this.restoredUnclaimedConfiguration = this.isXrayOnline;
                 if (this.isXrayOnline) this.watchdog.arm();
             });
         } catch (error: unknown) {
@@ -452,7 +454,7 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
                         control: false,
                     });
             }
-            const rememberConfiguration = () =>
+            const rememberConfiguration = () => {
                 this.internalService.extractUsersFromConfig(
                     body.internals.hashes,
                     profileInput
@@ -469,6 +471,8 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
                     })),
                     profileInput,
                 );
+                this.restoredUnclaimedConfiguration = false;
+            };
 
             if ((await this.managedCore.load()).paused) {
                 return respond(
@@ -532,6 +536,9 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
                                 fullConfig,
                             ),
                         requireLiveApply,
+                        allowInitialSettingsReplacement:
+                            this.restoredUnclaimedConfiguration &&
+                            !this.internalService.hasConfiguration(),
                         checkpoint: LIVE_CORE_CHECKPOINT,
                         validate: () =>
                             validateCoreConfig(this.xrayPath, fullConfig, this.managedCore.root),
@@ -553,7 +560,7 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
                     });
                     if (restarted) {
                         this.logger.warn(
-                            'Listener settings changed; Xray was validated and restarted automatically',
+                            'Runtime settings required replacement; Xray was validated and restarted automatically',
                         );
                         await this.refreshXrayVersion();
                     }

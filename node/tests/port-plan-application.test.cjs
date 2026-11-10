@@ -245,3 +245,32 @@ test('a refused global settings update reports the retained running core without
     assert.equal(f.state.calls.includes('apply'),true);
     for(const action of ['checkpoint','restart','users','enroll'])assert.equal(f.state.calls.includes(action),false,action);
 });
+
+test('the real service replaces initial recovered globals once without weakening ordinary or strict live deliveries', async t => {
+    const promises = require('node:fs/promises'), os = require('node:os'), crypto = require('node:crypto');
+    const directory = await promises.mkdtemp(path.join(os.tmpdir(), 'remnacust-initial-profile-'));
+    await promises.chmod(directory, 0o700);
+    t.after(() => promises.rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 20 }));
+    const checkpoint = path.join(directory, 'checkpoint.pb'), payload = Buffer.from('retained-profile');
+    await promises.writeFile(checkpoint, Buffer.concat([Buffer.from('REMNACUST-CORE-STATE-1\n' + crypto.createHash('sha256').update(payload).digest('hex') + '\n'), payload]), { mode: 0o600 });
+    const error = Object.assign(new Error('native global settings change'), { code: 1, stdout: '', stderr: 'runtime apply failed: rpc error: code = FailedPrecondition desc = Global core settings changed; preserve current sessions and apply this change during an explicit maintenance restart\n' });
+    for (const [recovered, known, strict] of [[true, false, false], [false, false, false], [true, true, false], [true, false, true]]) {
+        const f = fixture(checkpoint);
+        f.service.restoredUnclaimedConfiguration = recovered;
+        f.state.known = known;
+        f.request.internals.requireLiveApply = strict;
+        f.state.applyError = error;
+        const accepted = recovered && !known && !strict;
+        const result = await f.run();
+        assert.equal(result.response.error, accepted ? null : error.message);
+        assert.equal(f.state.calls.includes('restart'), accepted);
+        assert.equal(f.state.calls.includes('users'), accepted);
+        if (accepted) {
+            assert.equal(f.service.restoredUnclaimedConfiguration, false);
+            f.state.calls.length = 0;
+            const later = await f.run();
+            assert.equal(later.response.error, error.message);
+            assert.equal(f.state.calls.includes('restart'), false);
+        }
+    }
+});

@@ -66,6 +66,7 @@ test('the real service arms after offline boot, keeps up ticks cheap and updates
     const f = await fixture(t);
     await f.service.onApplicationBootstrap();
     assert.equal(f.state.starts, 1); assert.equal(f.service.isXrayOnline, true);
+    assert.equal(f.service.restoredUnclaimedConfiguration, true);
     f.state.capabilityReads = 0;
     for (let i = 0; i < 1000; i++) await f.service.watchdog.tick();
     assert.equal(f.state.capabilityReads, 0);

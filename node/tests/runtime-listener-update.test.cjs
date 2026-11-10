@@ -8,6 +8,7 @@ const load = require('./load-typescript.cjs');
 const { listenerReplacementRequired, applyRuntimeUpdate } = load(path.join(__dirname, '../src/modules/xray-core/runtime-listener-update.ts'));
 const rejection = 'runtime apply failed: rpc error: code = FailedPrecondition desc = Inbound YandexCDN-RU1 changes its port or transport; create a separate port/tag and retain this listener';
 const error = () => Object.assign(new Error('core command failed'), { code: 1, stdout: '', stderr: rejection + '\n' });
+const globalError = () => Object.assign(error(), { stderr: 'runtime apply failed: rpc error: code = FailedPrecondition desc = Global core settings changed; preserve current sessions and apply this change during an explicit maintenance restart\n' });
 const checkpoint = (text, quota = false) => {
     const payload = Buffer.from(text);
     return Buffer.concat([Buffer.from(`REMNACUST-CORE-STATE-${quota ? '2-USER-QUOTA' : '1'}\n${createHash('sha256').update(payload).digest('hex')}\n`), payload]);
@@ -48,6 +49,35 @@ test('normal hot application does not read a checkpoint or restart the process',
     const result = await applyRuntimeUpdate({ apply: async () => calls.push('apply'), checkpoint: '/missing', requireLiveApply: false });
     assert.equal(result, false);
     assert.deepEqual(calls, ['apply']);
+});
+
+test('a recovered unclaimed configuration may replace initial global settings only by explicit internal opt-in', async t => {
+    for (const allowed of [false, true]) {
+        const f = await fixture(t, true);
+        f.options.allowInitialSettingsReplacement = allowed;
+        f.options.apply = async () => { f.calls.push('apply'); throw globalError(); };
+        if (allowed) {
+            assert.equal(await applyRuntimeUpdate(f.options), true);
+            assert.deepEqual(f.calls, ['apply', 'validate', 'prepare', 'restart']);
+            assert.deepEqual(await fs.readFile(f.filename), f.target);
+        } else {
+            await assert.rejects(applyRuntimeUpdate(f.options), /core command failed/);
+            assert.deepEqual(f.calls, ['apply']);
+            assert.deepEqual(await fs.readFile(f.filename), f.previous);
+        }
+    }
+});
+
+test('an initial global replacement cannot bypass strict live plans or accept ambiguous process errors', async t => {
+    for (const fields of [{}, { code: 'ETIMEDOUT' }, { killed: true }, { stdout: '{}' }, { stderr: globalError().stderr + 'another failure' }]) {
+        const f = await fixture(t);
+        f.options.allowInitialSettingsReplacement = true;
+        f.options.requireLiveApply = Object.keys(fields).length === 0;
+        f.options.apply = async () => { f.calls.push('apply'); throw Object.assign(globalError(), fields); };
+        await assert.rejects(applyRuntimeUpdate(f.options));
+        assert.deepEqual(f.calls, ['apply']);
+        assert.deepEqual(await fs.readFile(f.filename), f.previous);
+    }
 });
 
 test('listener changes are validated and started once, preserving both checkpoint formats', async t => {

@@ -43,7 +43,13 @@ test('a real core accepts port and transport updates, preserves unchanged PID an
     await fs.chmod(directory, 0o700);
     const checkpoint = path.join(directory, 'checkpoint.pb'), source = path.join(directory, 'config.json');
     const apiPort = await freePort(), initialPort = await freePort(), nextPort = await freePort();
-    const echo = net.createServer(client => client.on('data', data => client.write(data)));
+    const serverErrors = [];
+    const echo = net.createServer(client => {
+        client.on('data', data => client.write(data));
+        client.on('error', error => {
+            if (error.code !== 'ECONNRESET') serverErrors.push(error);
+        });
+    });
     const echoPort = await listen(echo);
     let process, current, starts = 0;
     const stop = async () => {
@@ -78,10 +84,15 @@ test('a real core accepts port and transport updates, preserves unchanged PID an
         }
         throw new Error('Native test core readiness failed: ' + output.slice(-1000));
     };
+    let phase = 'initial';
     const ping = async port => {
         const id = Buffer.from(uuid.replaceAll('-', ''), 'hex');
         const request = Buffer.concat([Buffer.from([0]), id, Buffer.from([0, 1, echoPort >> 8, echoPort & 255, 1, 127, 0, 0, 1]), Buffer.from('ping')]);
-        assert.deepEqual(await exchange(port, request, 6), Buffer.from([0, 0, 112, 105, 110, 103]));
+        try {
+            assert.deepEqual(await exchange(port, request, 6), Buffer.from([0, 0, 112, 105, 110, 103]));
+        } catch (cause) {
+            throw new Error(`Native profile traffic failed during ${phase}`, { cause });
+        }
     };
     current = {
         log: { loglevel: 'warning' }, stats: {},
@@ -93,19 +104,36 @@ test('a real core accepts port and transport updates, preserves unchanged PID an
     await invoke(['api', 'cache-runtime', '--output=' + checkpoint, source]);
     await restart();
     await ping(initialPort);
-    const apply = async target => {
+    const apply = async (target, allowInitialSettingsReplacement = false) => {
         await write(target);
         return applyRuntimeUpdate({
-            requireLiveApply: false, checkpoint,
+            requireLiveApply: false, checkpoint, allowInitialSettingsReplacement,
             apply: async () => { const result = await invoke(['api', 'reconcile', `--server=127.0.0.1:${apiPort}`, '--timeout=3', source]); assert.match(result.stdout, /"hash"/); },
             validate: async () => { await invoke(['run', '-test', '-config', source]); },
             prepare: async () => { await invoke(['api', 'cache-runtime', '--output=' + checkpoint, source]); },
             restart, stop,
         });
     };
+    const recoveredPid = process.pid;
+    const initialProfile = structuredClone(current);
+    initialProfile.policy = { system: { statsInboundUplink: true } };
+    await assert.rejects(apply(initialProfile), /Global core settings changed/);
+    assert.equal(process.pid, recoveredPid);
+    phase = 'retained initial profile';
+    await ping(initialPort);
+    assert.equal(await apply(initialProfile, true), true);
+    assert.notEqual(process.pid, recoveredPid);
+    phase = 'accepted initial replacement';
+    await ping(initialPort);
+    const acceptedPid = process.pid;
+    assert.equal(await apply(initialProfile, true), false);
+    assert.equal(process.pid, acceptedPid);
+    current = initialProfile;
     const moved = structuredClone(current);
+    phase = 'moved listener';
     moved.inbounds[0].port = nextPort;
     assert.equal(await apply(moved), true);
+    phase = 'restored TCP transport';
     await ping(nextPort);
     const pid = process.pid;
     assert.equal(await apply(moved), false);
@@ -124,6 +152,8 @@ test('a real core accepts port and transport updates, preserves unchanged PID an
     const rejected = structuredClone(moved);
     rejected.inbounds[0].port = occupiedPort;
     await assert.rejects(apply(rejected), /previous running configuration was restored/);
+    phase = 'rollback';
     await ping(nextPort);
-    assert.equal(starts, 6);
+    assert.equal(starts, 7);
+    assert.deepEqual(serverErrors, []);
 });

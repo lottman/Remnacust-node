@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 
 const MAX_CHECKPOINT = 16 * 1024 * 1024 + 128;
 
-export function listenerReplacementRequired(error: unknown): boolean {
+export function listenerReplacementRequired(error: unknown, initialSettings = false): boolean {
     if (!(error instanceof Error)) return false;
     const failure = error as Error & {
         code?: unknown;
@@ -20,6 +20,8 @@ export function listenerReplacementRequired(error: unknown): boolean {
         (failure.stdout !== undefined && failure.stdout !== '')
     ) return false;
     const last = failure.stderr.trim().split(/\r?\n/).at(-1) ?? '';
+    if (initialSettings && last === 'runtime apply failed: rpc error: code = FailedPrecondition desc = Global core settings changed; preserve current sessions and apply this change during an explicit maintenance restart')
+        return true;
     return /^runtime apply failed: rpc error: code = FailedPrecondition desc = Inbound [^\r\n]{1,200} changes its port or transport; create a separate port\/tag and retain this listener$/.test(last);
 }
 
@@ -91,6 +93,7 @@ async function restoreCheckpoint(filename: string, data: Buffer): Promise<void> 
 export async function applyRuntimeUpdate(options: {
     apply: () => Promise<void>;
     requireLiveApply: boolean;
+    allowInitialSettingsReplacement?: boolean;
     checkpoint: string;
     validate: () => Promise<void>;
     prepare: () => Promise<void>;
@@ -101,7 +104,7 @@ export async function applyRuntimeUpdate(options: {
         await options.apply();
         return false;
     } catch (error) {
-        if (options.requireLiveApply || !listenerReplacementRequired(error)) throw error;
+        if (options.requireLiveApply || !listenerReplacementRequired(error, options.allowInitialSettingsReplacement === true)) throw error;
     }
     await options.validate();
     const previous = await snapshotCheckpoint(options.checkpoint);
