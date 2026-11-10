@@ -5,8 +5,6 @@ FROM node:26.13.0-trixie-slim AS build
 WORKDIR /opt/app
 
 COPY package*.json ./
-COPY scripts ./scripts
-COPY patches ./patches
 RUN npm ci --prefer-offline --no-audit --no-fund
 
 COPY . .

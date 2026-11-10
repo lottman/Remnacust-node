@@ -29,8 +29,7 @@
     "lint:fix": "oxlint --fix",
     "check": "oxfmt --check && oxlint",
     "fix": "oxfmt && oxlint --fix",
-    "typecheck": "tsc --noEmit",
-    "postinstall": "node scripts/apply-dependency-patches.cjs"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@bufbuild/protobuf": "2.17.0",
@@ -56,7 +55,7 @@
     "lmdb": "3.5.9",
     "morgan": "1.12.1",
     "nest-winston": "2.0.0",
-    "nestjs-zod": "5.5.0",
+    "nestjs-zod": "5.6.0",
     "nftables-napi": "0.7.1",
     "nice-grpc": "2.1.18",
     "node-object-hash": "^3.1.1",
