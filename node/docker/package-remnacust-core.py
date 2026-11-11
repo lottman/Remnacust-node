@@ -37,11 +37,16 @@ for folder, source_folder, _ in sources:
 source = json.loads((workspace / 'xray/REMNACUST-UPSTREAM.json').read_text(encoding='utf-8'))
 if not re.fullmatch(r'v[0-9][A-Za-z0-9.+-]*', source['upstreamVersion']) or not re.fullmatch(r'[a-f0-9]{40}', source['upstreamCommit']):
     raise SystemExit('Invalid pinned upstream release metadata')
+archive_hash = source.get('upstreamSourceZipSha256', '')
+if not re.fullmatch(r'[a-f0-9]{64}', archive_hash):
+    raise SystemExit('Missing verified upstream source archive checksum; outputs were not changed')
 dockerfile = docker / 'Dockerfile'
 recipe = dockerfile.read_text(encoding='utf-8')
 recipe, versions = re.subn(r'(?m)^ARG XRAY_CORE_VERSION=\S+$', 'ARG XRAY_CORE_VERSION=' + source['upstreamVersion'], recipe)
 recipe, commits = re.subn(r'(?m)^ARG XRAY_CORE_COMMIT=\S+$', 'ARG XRAY_CORE_COMMIT=' + source['upstreamCommit'], recipe)
-if versions != 2 or commits != 1:
+recipe, default_commits = re.subn(r'(?m)^ARG XRAY_DEFAULT_COMMIT=\S+$', 'ARG XRAY_DEFAULT_COMMIT=' + source['upstreamCommit'], recipe)
+recipe, default_hashes = re.subn(r'(?m)^ARG XRAY_DEFAULT_SOURCE_SHA256=\S+$', 'ARG XRAY_DEFAULT_SOURCE_SHA256=' + archive_hash, recipe)
+if versions != 2 or commits != 1 or default_commits != 1 or default_hashes != 1:
     raise SystemExit('Dockerfile upstream pin layout changed; update the source packager')
 lock = {
     'version': source['version'],

@@ -18,7 +18,7 @@ RUN npm run build \
     && chmod +x dist/cli.js
 
 
-FROM golang:1.27.3-alpine AS xray-device-build
+FROM golang:1.27.4-alpine AS xray-device-build
 
 ARG XRAY_CORE_VERSION=v26.11.9
 ARG XRAY_CORE_COMMIT=676eaf66f8f05d4d558ee7a74b4736623d3feeb9
@@ -35,6 +35,19 @@ RUN go test github.com/refraction-networking/utls -run '^TestRemnacustCertificat
     && CORE_VERSION=$(sed -n 's/^  "version": "\([0-9.]*\)",$/\1/p' /src/core-source-lock.json) \
     && test -n "$CORE_VERSION" \
     && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X github.com/xtls/xray-core/core.build=Remnacust-${CORE_VERSION}" -o /tmp/xray ./main
+
+
+FROM golang:1.27.4-alpine AS xray-default-build
+
+ARG XRAY_DEFAULT_COMMIT=676eaf66f8f05d4d558ee7a74b4736623d3feeb9
+ARG XRAY_DEFAULT_SOURCE_SHA256=05623c5394d82870edcfdd9355169b05453da133544355012b2cd1874e67f100
+RUN apk add --no-cache curl unzip \
+    && curl -fsSL --proto '=https' --proto-redir '=https' "https://codeload.github.com/XTLS/Xray-core/zip/${XRAY_DEFAULT_COMMIT}" -o /tmp/source.zip \
+    && echo "${XRAY_DEFAULT_SOURCE_SHA256}  /tmp/source.zip" | sha256sum -c - \
+    && unzip -q /tmp/source.zip -d /src \
+    && rm /tmp/source.zip
+WORKDIR /src/Xray-core-${XRAY_DEFAULT_COMMIT}
+RUN CGO_ENABLED=0 go build -buildvcs=false -trimpath -ldflags "-s -w" -o /tmp/xray ./main
 
 
 FROM alpine:3.21 AS xray
@@ -76,7 +89,7 @@ RUN mkdir -p /usr/local/share/asn \
     && rm -f /tmp/asn-prefixes.lmdb.zst
 
 
-FROM golang:1.27.3-alpine AS geocheck
+FROM golang:1.27.4-alpine AS geocheck
 ARG GEOCHECK_VERSION=0.3.0
 ARG GEOCHECK_COMMIT=50e084bb3ed34b55fc6839fe0dc4bafd9fe275fc
 RUN apk add --no-cache git
@@ -115,7 +128,7 @@ WORKDIR /opt/app
 COPY --from=build /opt/app/dist ./dist
 
 COPY --from=xray-device-build /tmp/xray /usr/local/bin/xray
-COPY --from=xray /usr/local/bin/xray /usr/local/bin/xray-default
+COPY --from=xray-default-build /tmp/xray /usr/local/bin/xray-default
 COPY --from=xray /usr/local/share/xray/geoip.dat /usr/local/share/xray/geoip.dat
 COPY --from=xray /usr/local/share/xray/geosite.dat /usr/local/share/xray/geosite.dat
 COPY --from=asn /usr/local/share/asn /usr/local/share/asn

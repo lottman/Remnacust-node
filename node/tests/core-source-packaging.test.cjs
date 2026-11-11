@@ -26,12 +26,12 @@ async function fixture(t, layout = 'combined') {
     const node = layout === 'combined' ? path.join(workspace, 'node') : path.join(workspace, 'Remnacust-node/node');
     const core = layout === 'combined' ? workspace : path.join(workspace, 'Remnacust-core');
     await put(node, 'docker/package-remnacust-core.py', await fs.readFile(packager));
-    await put(node, 'docker/Dockerfile', 'ARG XRAY_CORE_VERSION=v1.0.0\nARG XRAY_CORE_COMMIT=' + 'b'.repeat(40) + '\nARG XRAY_CORE_VERSION=v1.0.0\n');
+    await put(node, 'docker/Dockerfile', 'ARG XRAY_CORE_VERSION=v1.0.0\nARG XRAY_CORE_COMMIT=' + 'b'.repeat(40) + '\nARG XRAY_CORE_VERSION=v1.0.0\nARG XRAY_DEFAULT_COMMIT=' + 'b'.repeat(40) + '\nARG XRAY_DEFAULT_SOURCE_SHA256=' + 'd'.repeat(64) + '\n');
     const files = {
         'xray/core/core.go': 'package core\n',
         'xray/go.mod': 'module example.com/core\n\nreplace github.com/openlibrecommunity/olcrtc => ../vendor/olcrtc\nreplace github.com/refraction-networking/utls => ../vendor/utls\n',
         'xray/go.sum': '',
-        'xray/REMNACUST-UPSTREAM.json': JSON.stringify({ version: '1.1.14', upstreamVersion: 'v26.10.31', upstreamCommit: 'a'.repeat(40) }),
+        'xray/REMNACUST-UPSTREAM.json': JSON.stringify({ version: '1.1.14', upstreamVersion: 'v26.10.31', upstreamCommit: 'a'.repeat(40), upstreamSourceZipSha256: 'c'.repeat(64) }),
         'vendor/olcrtc/go.mod': 'module github.com/openlibrecommunity/olcrtc\n',
         'vendor/olcrtc/go.sum': '',
         'vendor/olcrtc/LICENSE': 'fixture license\n',
@@ -83,8 +83,23 @@ test('the actual packager preserves vendored replacements and integrity in combi
             await f.run();
             assert.deepEqual(await f.snapshot(), first);
             assert.match(first[0].toString(), /ARG XRAY_CORE_VERSION=v26\.10\.31/);
+            assert.ok(first[0].toString().includes('ARG XRAY_DEFAULT_COMMIT=' + 'a'.repeat(40)));
+            assert.ok(first[0].toString().includes('ARG XRAY_DEFAULT_SOURCE_SHA256=' + 'c'.repeat(64)));
             assert.equal(createHash('sha256').update(first[1]).digest('hex'), first[2].toString().split(' ')[0]);
         });
+    }
+});
+
+test('missing or malformed upstream source checksum cannot replace packaged outputs', async t => {
+    const f = await fixture(t);
+    await f.run();
+    const previous = await f.snapshot();
+    const metadata = path.join(f.core, 'xray/REMNACUST-UPSTREAM.json');
+    const source = JSON.parse(await fs.readFile(metadata, 'utf8'));
+    for (const value of [undefined, '', 'a'.repeat(63), '../source.zip']) {
+        await fs.writeFile(metadata, JSON.stringify({ ...source, upstreamSourceZipSha256: value }));
+        await assert.rejects(f.run(), /Missing verified upstream source archive checksum/);
+        assert.deepEqual(await f.snapshot(), previous);
     }
 });
 
