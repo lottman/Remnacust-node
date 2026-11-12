@@ -10,7 +10,10 @@ import { TypedConfigService } from '@common/config/app-config/typed-config.servi
 import { CommonConfigModule } from '@common/config/common-config';
 import { getJWTConfig } from '@common/config/jwt/jwt.config';
 import { JwtStrategy } from '@common/guards/jwt-guards/strategies/validate-token';
-import { privateXtlsConnectionUrl } from '@common/utils/private-xtls-socket';
+import {
+    privateXtlsConnectionUrl,
+    PRIVATE_XTLS_RECONNECT_OPTIONS,
+} from '@common/utils/private-xtls-socket';
 
 import { InternalModule } from './modules/internal/internal.module';
 import { RemnawaveNodeModules } from './modules/remnawave-node.modules';
@@ -30,6 +33,7 @@ import { RemnawaveNodeModules } from './modules/remnawave-node.modules';
                     credentials: ChannelCredentials.createInsecure(),
                     options: {
                         'grpc.max_receive_message_length': 100_000_000, // 100MB
+                        ...PRIVATE_XTLS_RECONNECT_OPTIONS,
                     },
                 };
             },

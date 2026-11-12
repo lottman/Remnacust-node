@@ -454,23 +454,28 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
                         control: false,
                     });
             }
-            const rememberConfiguration = () => {
-                this.internalService.extractUsersFromConfig(
-                    body.internals.hashes,
-                    profileInput
-                        ? {
-                              ...fullConfig,
-                              inbounds: profileInput.graphs.flatMap((graph) =>
-                                  Array.isArray(graph.config.inbounds) ? graph.config.inbounds : [],
-                              ),
-                          }
-                        : fullConfig,
-                    profileInput?.graphs.map((graph) => ({
-                        bindingUuid: graph.bindingUuid,
-                        inboundTag: (graph.config.inbounds as { tag: string }[])[0].tag,
-                    })),
-                    profileInput,
-                );
+            const rememberConfiguration = async () => {
+                try {
+                    await this.internalService.extractUsersFromConfig(
+                        body.internals.hashes,
+                        profileInput
+                            ? {
+                                  ...fullConfig,
+                                  inbounds: profileInput.graphs.flatMap((graph) =>
+                                      Array.isArray(graph.config.inbounds) ? graph.config.inbounds : [],
+                                  ),
+                              }
+                            : fullConfig,
+                        profileInput?.graphs.map((graph) => ({
+                            bindingUuid: graph.bindingUuid,
+                            inboundTag: (graph.config.inbounds as { tag: string }[])[0].tag,
+                        })),
+                        profileInput,
+                    );
+                } catch (error) {
+                    this.internalService.cleanup();
+                    throw error;
+                }
                 this.restoredUnclaimedConfiguration = false;
             };
 
