@@ -7,6 +7,8 @@ import { IInterfaceRate, IInterfaceStats, INetworkSnapshot } from './interfaces'
 
 const INTERVAL_MS = 1_000;
 const INTERVAL_NAME = 'network-stats-poll';
+const ROUTE_UP = 0x1;
+const ROUTE_REJECT = 0x200;
 
 @Injectable()
 export class NetworkStatsService implements OnModuleInit {
@@ -14,6 +16,7 @@ export class NetworkStatsService implements OnModuleInit {
 
     private static readonly PROC_NET_DEV = '/proc/net/dev';
     private static readonly PROC_NET_ROUTE = '/proc/net/route';
+    private static readonly PROC_NET_IPV6_ROUTE = '/proc/net/ipv6_route';
 
     private isAvailable: boolean = false;
     private previousStats = new Map<string, IInterfaceStats>();
@@ -131,7 +134,8 @@ export class NetworkStatsService implements OnModuleInit {
 
     private resolveDefaultInterface(): string | null {
         try {
-            if (!existsSync(NetworkStatsService.PROC_NET_ROUTE)) return null;
+            if (!existsSync(NetworkStatsService.PROC_NET_ROUTE))
+                return this.resolveIpv6DefaultInterface();
 
             const content = readFileSync(NetworkStatsService.PROC_NET_ROUTE, 'utf-8');
             const lines = content.split('\n').slice(1);
@@ -148,9 +152,51 @@ export class NetworkStatsService implements OnModuleInit {
                 if (!best || metric < best.metric) best = { iface, metric };
             }
 
-            return best?.iface ?? null;
+            return best?.iface ?? this.resolveIpv6DefaultInterface();
         } catch {
             this.logger.warn('Could not resolve default interface from /proc/net/route');
+            return this.resolveIpv6DefaultInterface();
+        }
+    }
+
+    private resolveIpv6DefaultInterface(): string | null {
+        try {
+            if (!existsSync(NetworkStatsService.PROC_NET_IPV6_ROUTE)) return null;
+            const content = readFileSync(NetworkStatsService.PROC_NET_IPV6_ROUTE, 'utf-8');
+            const unspecified = '0'.repeat(32);
+            let best: { iface: string; metric: number } | null = null;
+            for (const line of content.split('\n')) {
+                const fields = line.trim().split(/\s+/);
+                if (fields.length !== 10) continue;
+                const [
+                    destination,
+                    prefix,
+                    source,
+                    sourcePrefix,
+                    ,
+                    metricText,
+                    ,
+                    ,
+                    flagsText,
+                    iface,
+                ] = fields;
+                if (
+                    destination !== unspecified ||
+                    prefix !== '00' ||
+                    source !== unspecified ||
+                    sourcePrefix !== '00' ||
+                    !/^[\da-f]{8}$/i.test(metricText) ||
+                    !/^[\da-f]{8}$/i.test(flagsText)
+                )
+                    continue;
+                const flags = Number.parseInt(flagsText, 16);
+                if (!(flags & ROUTE_UP) || flags & ROUTE_REJECT) continue;
+                const metric = Number.parseInt(metricText, 16);
+                if (!best || metric < best.metric) best = { iface, metric };
+            }
+            return best?.iface ?? null;
+        } catch {
+            this.logger.warn('Could not resolve default interface from /proc/net/ipv6_route');
             return null;
         }
     }
