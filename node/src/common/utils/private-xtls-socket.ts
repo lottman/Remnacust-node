@@ -1,4 +1,5 @@
-import { lstatSync } from 'node:fs';
+import { lstatSync, unlinkSync } from 'node:fs';
+import { createConnection } from 'node:net';
 import { dirname } from 'node:path';
 
 function requirePrivateSocket(socketPath: string, filename: 'api.sock' | 'internal.sock'): void {
@@ -39,6 +40,54 @@ export function isPrivateXtlsSocketAvailable(socketPath: string): boolean {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
         throw error;
     }
+}
+
+export async function removeStalePrivateXtlsSocket(
+    socketPath: string,
+    stopped: () => Promise<boolean>,
+): Promise<void> {
+    requirePrivateSocket(socketPath, 'api.sock');
+    let before;
+    try {
+        before = lstatSync(socketPath);
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+        throw error;
+    }
+    if (!before.isSocket() || before.uid !== process.getuid?.() || (before.mode & 0o077) !== 0)
+        throw new Error('Refusing to remove an unsafe Xray API socket');
+    if (!(await stopped())) throw new Error('Cannot verify that the Xray process is stopped');
+    await new Promise<void>((resolve, reject) => {
+        const connection = createConnection({ path: socketPath });
+        connection.once('connect', () => {
+            connection.destroy();
+            reject(new Error('Refusing to remove an active Xray API socket'));
+        });
+        connection.once('error', (error: NodeJS.ErrnoException) => {
+            if (error.code === 'ECONNREFUSED' || error.code === 'ENOENT') resolve();
+            else reject(error);
+        });
+        connection.setTimeout(500, () =>
+            connection.destroy(new Error('Xray API socket probe timed out')),
+        );
+    });
+    if (!(await stopped())) throw new Error('Xray process changed during socket cleanup');
+    let after;
+    try {
+        after = lstatSync(socketPath);
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+        throw error;
+    }
+    if (
+        after.dev !== before.dev ||
+        after.ino !== before.ino ||
+        !after.isSocket() ||
+        after.uid !== before.uid ||
+        after.mode !== before.mode
+    )
+        throw new Error('Xray API socket changed during cleanup');
+    unlinkSync(socketPath);
 }
 
 export const PRIVATE_XTLS_RECONNECT_OPTIONS = Object.freeze({

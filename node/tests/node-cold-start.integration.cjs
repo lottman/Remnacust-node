@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const https = require('node:https');
 const net = require('node:net');
 const crypto = require('node:crypto');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawn } = require('node:child_process');
 const { createRequire } = require('node:module');
 const { HashedSet } = createRequire('/opt/app/dist/main.js')('@remnawave/hashed-set');
 const read = (name) => fs.readFileSync('/test/' + name);
@@ -78,6 +78,39 @@ const coreId = () => {
             .split(/\s+/)[19]
     );
 };
+async function leaveOrphanSocket() {
+    const socket = fs.readFileSync('/run/s6/container_environment/XTLS_API_SOCKET_PATH', 'utf8');
+    if (fs.existsSync(socket)) return;
+    const child = spawn(
+        process.execPath,
+        [
+            '-e',
+            'const net=require("node:net"),fs=require("node:fs");net.createServer().listen(process.argv[1],()=>{fs.chmodSync(process.argv[1],0o600);process.stdout.write("ready");});',
+            socket,
+        ],
+        { stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+    try {
+        await new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(Error('orphan socket fixture timed out')), 5000);
+            child.once('error', (error) => {
+                clearTimeout(timer);
+                reject(error);
+            });
+            child.stdout.once('data', () => {
+                clearTimeout(timer);
+                resolve();
+            });
+        });
+        const exited = new Promise((resolve) => child.once('exit', resolve));
+        child.kill('SIGKILL');
+        await exited;
+        assert(fs.lstatSync(socket).isSocket());
+    } finally {
+        child.kill('SIGKILL');
+    }
+}
+
 async function main() {
     if (process.argv[2] === 'restored') return verifyRestored();
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -136,6 +169,7 @@ async function main() {
     } finally {
         await new Promise((resolve) => blocker.close(resolve));
     }
+    await leaveOrphanSocket();
     const began = performance.now();
     const applied = await request('/node/xray/start', body);
     assert.equal(applied.status, 201, JSON.stringify(applied));

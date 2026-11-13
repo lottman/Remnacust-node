@@ -5,7 +5,10 @@ import { promisify } from 'node:util';
 
 import { Injectable, Logger } from '@nestjs/common';
 
-import { isPrivateXtlsSocketAvailable } from '@common/utils/private-xtls-socket';
+import {
+    isPrivateXtlsSocketAvailable,
+    removeStalePrivateXtlsSocket,
+} from '@common/utils/private-xtls-socket';
 import { readCoreVersion } from '@common/utils/read-core-version';
 
 const execFileAsync = promisify(execFile);
@@ -49,6 +52,12 @@ export class XrayProcessService {
     }
 
     public async start(): Promise<void> {
+        const socket = process.env.XTLS_API_SOCKET_PATH;
+        if (socket && !(await this.getStatus()).up)
+            await removeStalePrivateXtlsSocket(socket, async () => {
+                const status = await this.getStatus();
+                return !status.up && status.raw === 'false -1';
+            });
         await execFileAsync(
             XrayProcessService.S6_SVC,
             ['-wu', '-T', String(XrayProcessService.UP_TIMEOUT_MS), '-o', this.serviceDir],
