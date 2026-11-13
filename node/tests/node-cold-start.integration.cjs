@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const https = require('node:https');
 const net = require('node:net');
 const crypto = require('node:crypto');
+const { execFileSync } = require('node:child_process');
 const { createRequire } = require('node:module');
 const { HashedSet } = createRequire('/opt/app/dist/main.js')('@remnawave/hashed-set');
 const read = (name) => fs.readFileSync('/test/' + name);
@@ -59,8 +60,24 @@ function request(path, data) {
     });
 }
 const statsPath = '/node/stats/get-system-stats';
-const coreId = () =>
-    JSON.parse(fs.readFileSync('/var/lib/remnanode/host-policy.status.json')).coreProcessId;
+const coreId = () => {
+    const status = execFileSync('/command/s6-svstat', ['-o', 'up,pid', '/run/service/xray'], {
+        timeout: 2000,
+    })
+        .toString()
+        .trim();
+    assert.match(status, /^true [1-9][0-9]*$/);
+    const pid = status.split(' ')[1];
+    const stat = fs.readFileSync('/proc/' + pid + '/stat', 'utf8');
+    return (
+        pid +
+        ':' +
+        stat
+            .slice(stat.lastIndexOf(')') + 2)
+            .trim()
+            .split(/\s+/)[19]
+    );
+};
 async function main() {
     for (let attempt = 0; attempt < 3; attempt++) {
         assert.equal((await request(statsPath)).status, 503);
