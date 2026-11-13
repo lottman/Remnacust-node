@@ -12,10 +12,10 @@ export async function getStartMessage(appPort: number, app: INestApplication) {
     const xrayInfo = xrayService.getXrayInfo();
     const systemInfo = getSystemInfo();
 
-    return renderBox(`Remnawave Node v${__RWNODE_VERSION__}`, [
-        'Docs → https://docs.rw\nCommunity → https://t.me/remnawave',
+    return renderBox(`Remnacust Node v${__RWNODE_VERSION__}`, [
+        'Docs → https://github.com/lottman/Remnacust-node\nSupport → https://t.me/lottman',
         `API Port: ${appPort}`,
-        `XRay Core: v${xrayInfo.version || 'N/A'}\nXRay Path: /usr/local/bin/xray`,
+        `XRay Core: v${xrayInfo.version || 'N/A'}\nXRay Path: ${xrayInfo.path}`,
         `${systemInfo.cpus}C, ${systemInfo.cpuModel}, ${prettyBytes(systemInfo.memoryTotal)}`,
         `Kernel: ${systemInfo.release} ${systemInfo.type} ${systemInfo.platform}`,
         `Network Interfaces: ${systemInfo.networkInterfaces.join(', ')}`,

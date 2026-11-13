@@ -7,6 +7,7 @@ function fixture() {
     const state = { calls: [], up: true, pid: 42, output: '{}', failures: 0, waits: 0, warnings: 0 };
     const { XrayProcessService } = load(path.join(__dirname, '../src/modules/xray-core/xray-process.service.ts'), {
         '@common/utils/read-core-version': {},
+        '@common/utils/private-xtls-socket': { isPrivateXtlsSocketAvailable: () => true },
         '@nestjs/common': { Injectable: () => x => x, Logger: class { warn() { state.warnings++; } } },
         'node:util': { promisify: fn => (...args) => new Promise((resolve, reject) => fn(...args,
             (error, stdout, stderr) => error ? reject(error) : resolve({ stdout, stderr }))) },
@@ -75,4 +76,17 @@ test('s6 start remains once-only and both lifecycle subprocess calls have hard t
         assert.equal(call.options.timeout, 12000);
         assert.equal(call.options.maxBuffer, 16384);
     }
+});
+
+
+test('lifecycle probing never invokes the persistent SDK and never spawns a core for an absent API socket', async () => {
+    const { state, service } = fixture();
+    service.isApiSocketAvailable = () => false;
+    assert.equal(await service.probeApi('/fixture-core', '/private/api.sock', 42), false);
+    assert.equal(state.calls.length, 0);
+    service.isApiSocketAvailable = () => true;
+    assert.equal(await service.probeApi('/fixture-core', '/private/api.sock', 42), true);
+    state.pid = 43;
+    assert.equal(await service.probeApi('/fixture-core', '/private/api.sock', 42), false);
+    assert.equal(state.calls[0].options.timeout, 3000);
 });

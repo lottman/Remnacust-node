@@ -1,7 +1,7 @@
 import ems from 'enhanced-ms';
 import { hasCapNetAdmin } from 'sockdestroy';
 
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
 import { EventBus } from '@nestjs/cqrs';
 
 import { XtlsApi } from '@remnawave/xtls-sdk';
@@ -26,8 +26,8 @@ import {
     RemoveUserRequestDto,
     RemoveUsersRequestDto,
 } from './dtos';
-import { ProfileUserHandler } from './profile-user-handler';
 import { AddUserResponseModel, RemoveUserResponseModel, GenericResponseModel } from './models';
+import { ProfileUserHandler } from './profile-user-handler';
 
 @Injectable()
 export class HandlerService implements OnModuleInit {
@@ -40,13 +40,16 @@ export class HandlerService implements OnModuleInit {
         private readonly internalService: InternalService,
         private readonly eventBus: EventBus,
     ) {
-        this.users = new ProfileUserHandler(xtlsApi,
-            tag => this.internalService.getProfileBindingsForTag(tag));
+        this.users = new ProfileUserHandler(xtlsApi, (tag) =>
+            this.internalService.getProfileBindingsForTag(tag),
+        );
     }
 
     private requireConfiguration(): void {
         if (!this.internalService.hasConfiguration())
-            throw new Error('Node user state is not synchronized; retry after panel reconciliation');
+            throw new ServiceUnavailableException(
+                'Node user state is not synchronized; retry after panel reconciliation',
+            );
     }
 
     private async revokeRetiredUser(username: string): Promise<void> {
@@ -70,12 +73,14 @@ export class HandlerService implements OnModuleInit {
     }
 
     public async addUser(data: AddUserRequestDto): Promise<TResult<AddUserResponseModel>> {
-        return coreManagement.run(() => this.addUserLocked(data));
+        return coreManagement.run(() => {
+            this.requireConfiguration();
+            return this.addUserLocked(data);
+        });
     }
 
     private async addUserLocked(data: AddUserRequestDto): Promise<TResult<AddUserResponseModel>> {
         try {
-            this.requireConfiguration();
             const { data: requestData, hashData } = data;
             const response: Array<ISdkResponse<AddUserResponseModelFromSdk>> = [];
             const userId = requestData[0].username;
@@ -251,7 +256,10 @@ export class HandlerService implements OnModuleInit {
     }
 
     public async removeUser(data: RemoveUserRequestDto): Promise<TResult<RemoveUserResponseModel>> {
-        return coreManagement.run(() => this.removeUserLocked(data));
+        return coreManagement.run(() => {
+            this.requireConfiguration();
+            return this.removeUserLocked(data);
+        });
     }
 
     private async removeUserLocked(
@@ -259,7 +267,7 @@ export class HandlerService implements OnModuleInit {
     ): Promise<TResult<RemoveUserResponseModel>> {
         try {
             const { username, hashData } = data;
-            this.requireConfiguration();
+
             const response: Array<ISdkResponse<RemoveUserResponseModelFromSdk>> = [];
 
             const inboundTags = this.internalService.getXtlsConfigInbounds();
@@ -312,14 +320,16 @@ export class HandlerService implements OnModuleInit {
     }
 
     public async addUsers(data: AddUsersRequestDto): Promise<TResult<AddUserResponseModel>> {
-        return coreManagement.run(() => this.addUsersLocked(data));
+        return coreManagement.run(() => {
+            this.requireConfiguration();
+            return this.addUsersLocked(data);
+        });
     }
 
     private async addUsersLocked(data: AddUsersRequestDto): Promise<TResult<AddUserResponseModel>> {
         const tm = performance.now();
         try {
             const { affectedInboundTags, users } = data;
-            this.requireConfiguration();
 
             for (const tag of affectedInboundTags) {
                 this.internalService.addXtlsConfigInbound(tag);
@@ -344,10 +354,7 @@ export class HandlerService implements OnModuleInit {
                     }
                 }
                 for (const tag of this.internalService.getXtlsConfigInbounds()) {
-                    const removed = await this.users.removeUser(
-                        tag,
-                        user.userData.userId,
-                    );
+                    const removed = await this.users.removeUser(tag, user.userData.userId);
                     if (!removed.isOk)
                         throw new Error(
                             removed.message ?? 'Failed to remove previous inbound access',
@@ -470,7 +477,7 @@ export class HandlerService implements OnModuleInit {
                 'Users addition took: ' +
                     ems(performance.now() - tm, {
                         useAbbreviations: true,
-            unitLimit: 2,
+                        unitLimit: 2,
                         includeMs: true,
                     }),
             );
@@ -480,7 +487,10 @@ export class HandlerService implements OnModuleInit {
     public async removeUsers(
         data: RemoveUsersRequestDto,
     ): Promise<TResult<RemoveUserResponseModel>> {
-        return coreManagement.run(() => this.removeUsersLocked(data));
+        return coreManagement.run(() => {
+            this.requireConfiguration();
+            return this.removeUsersLocked(data);
+        });
     }
 
     private async removeUsersLocked(
@@ -489,7 +499,6 @@ export class HandlerService implements OnModuleInit {
         const tm = performance.now();
         try {
             const inboundTags = this.internalService.getXtlsConfigInbounds();
-            this.requireConfiguration();
 
             if (inboundTags.size === 0) {
                 for (const user of data.users) await this.revokeRetiredUser(user.userId);
@@ -548,7 +557,7 @@ export class HandlerService implements OnModuleInit {
                 'Users removal took: ' +
                     ems(performance.now() - tm, {
                         useAbbreviations: true,
-            unitLimit: 2,
+                        unitLimit: 2,
                         includeMs: true,
                     }),
             );

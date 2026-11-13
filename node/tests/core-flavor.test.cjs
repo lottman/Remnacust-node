@@ -238,6 +238,8 @@ function serviceFixture() {
             },
         },
         internalService: {
+            cleanup: () => calls.push('clear-users'),
+            setXrayConfig: () => calls.push('boot-config'),
             snapshotConfiguration: () => () => calls.push('restore-configuration'),
             isNeedRestartCore: () => false,
             extractUsersFromConfig: async () => calls.push('users'),

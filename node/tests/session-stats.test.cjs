@@ -18,7 +18,7 @@ function service(stats) {
         '../xray-core/profile-traffic': {},
         './models': { GetUsersIpListResponseModel: Users, GetUserIpListResponseModel: Ips },
     });
-    const instance = new StatsService({ stats }, {}, {}, {});
+    const instance = new StatsService({ stats }, {}, { getStatus: async () => ({ up: true }), isApiSocketAvailable: () => true }, {});
     instance.logger = { error() {}, warn() {} };
     return instance;
 }

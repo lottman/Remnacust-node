@@ -9,7 +9,7 @@ cleanup() {
  status=$?
  if [ "$status" != 0 ]; then docker logs --tail 70 "$test_name" 2>&1 || true; fi
  docker rm -f "$test_name" >/dev/null 2>&1 || true
- rm -f "$test_root"/{ca.key,ca.crt,ca.srl,node.key,node.csr,node.crt,node.ext,jwt.key,jwt.pub,node.env,expected.json,check.cjs,result.txt}
+ rm -f "$test_root"/{ca.key,ca.crt,ca.srl,node.key,node.csr,node.crt,node.ext,jwt.key,jwt.pub,node.env,expected.json,check.cjs,lifecycle.cjs,result.txt}
  rmdir "$test_root" 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -74,3 +74,10 @@ cat "$test_root/result.txt"
 rm -f "$test_root/result.txt"
 test "$ready" = 1
 test "$(docker inspect -f '{{.State.Running}}' "$test_name")" = true
+
+cp "$source_root/node/tests/node-cold-start.integration.cjs" "$test_root/lifecycle.cjs"
+docker exec "$test_name" node /test/lifecycle.cjs
+if docker logs "$test_name" 2>&1 | grep -F 'Node user state is not synchronized'; then
+    echo 'Expected initialization requests were logged as unexpected handler failures' >&2
+    exit 1
+fi

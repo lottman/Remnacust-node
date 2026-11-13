@@ -341,10 +341,14 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
                 if (status.up) {
                     preserveRunningCore = true;
                     if (!(await this.xtlsSdk.stats.getSysStats()).isOk)
-                        throw new Error('Core management API is temporarily unavailable; the running process was preserved');
+                        throw new Error(
+                            'Core management API is temporarily unavailable; the running process was preserved',
+                        );
                     this.isXrayOnline = true;
                 } else if (!status.raw) {
-                    throw new Error('Core process state is unavailable; automatic restart was refused');
+                    throw new Error(
+                        'Core process state is unavailable; automatic restart was refused',
+                    );
                 }
             }
             const integrations = await this.integrations.sync(
@@ -385,9 +389,13 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
                 } else {
                     const processStatus = await this.xrayProcess.getStatus();
                     if (processStatus.up)
-                        throw new Error('Core management API is temporarily unavailable; the running process was preserved');
+                        throw new Error(
+                            'Core management API is temporarily unavailable; the running process was preserved',
+                        );
                     if (!processStatus.raw)
-                        throw new Error('Core process state is unavailable; automatic restart was refused');
+                        throw new Error(
+                            'Core process state is unavailable; automatic restart was refused',
+                        );
                     this.isXrayOnline = false;
                     shouldRestart = true;
 
@@ -462,7 +470,9 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
                             ? {
                                   ...fullConfig,
                                   inbounds: profileInput.graphs.flatMap((graph) =>
-                                      Array.isArray(graph.config.inbounds) ? graph.config.inbounds : [],
+                                      Array.isArray(graph.config.inbounds)
+                                          ? graph.config.inbounds
+                                          : [],
                                   ),
                               }
                             : fullConfig,
@@ -594,7 +604,9 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
                     await this.liveCore.prepareProfileRestart(this.xrayPath, profileInput);
                 else await this.liveCore.prepareRestart(this.xrayPath, fullConfig);
             }
-            if (!profileInput) await rememberConfiguration();
+            this.internalService.cleanup();
+            this.internalService.setXrayConfig(fullConfig);
+            this.isXrayOnline = false;
 
             flavorRestarted = !!flavorTarget?.changed;
             const xrayProcess = await this.restartXrayProcess();
@@ -643,7 +655,7 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
             if (liveSupported) this.watchdog?.arm(true);
 
             await this.refreshXrayVersion();
-            if (profileInput) await rememberConfiguration();
+            await rememberConfiguration();
 
             this.logger.log(`✔ XRay Core v${this.xrayVersion} is up and running.`);
 
@@ -1024,8 +1036,16 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
         try {
             const status = await this.xrayProcess.getStatus();
             if (!status.up) this.isXrayOnline = false;
-            else if (!this.isXrayOnline)
-                this.isXrayOnline = (await this.xtlsSdk.stats.getSysStats()).isOk;
+            else if (
+                !this.isXrayOnline &&
+                !coreManagement.isBusy() &&
+                this.xrayProcess.isApiSocketAvailable()
+            )
+                this.isXrayOnline = await this.xrayProcess.probeApi(
+                    this.xrayPath,
+                    this.internal.xtlsApiSocketPath,
+                    status.pid!,
+                );
             return ok(
                 new GetNodeHealthCheckResponseModel(
                     true,
@@ -1084,7 +1104,6 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
         try {
             await pRetry(
                 async () => {
-                    const { isOk, message } = await this.xtlsSdk.stats.getSysStats();
                     const status = await this.xrayProcess.getStatus();
 
                     if (!status.up || (startedPid !== null && status.pid !== startedPid)) {
@@ -1095,12 +1114,21 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
                         );
                     }
 
-                    if (isOk) return;
+                    if (
+                        status.pid !== null &&
+                        (await this.xrayProcess.probeApi(
+                            this.xrayPath,
+                            this.internal.xtlsApiSocketPath,
+                            status.pid,
+                        ))
+                    )
+                        return;
 
-                    throw new Error(message);
+                    throw new Error('Private Xray API is not ready');
                 },
                 {
                     retries: 30,
+                    maxRetryTime: 60_000,
                     minTimeout: 100,
                     maxTimeout: 2000,
                     factor: 1.5,

@@ -2,7 +2,7 @@
 
 # Remnacust Node — agent source
 
-Agent **1.1.26** is based on Remnawave Node 3.4.3. Coordinated components are Installer **1.2.168**, panel/page **1.1.7.120**, and Core **1.1.16 / Xray v26.10.31**. The current checkout may contain unreleased changes.
+Agent **1.1.33** is based on Remnawave Node 3.4.3. Coordinated components are Installer **1.2.170**, panel/page **1.1.7.122**, and Core **1.1.19 / Xray v26.11.9**. The current checkout may contain unreleased changes.
 
 ## Install ready components
 
@@ -14,7 +14,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/lottman/Remnacust-installer/
 
 ## For operators
 
-Use the [installation and maintenance guide](../README.en.md). Installer 1.2.168 supports Ubuntu 22.04/24.04/26.04 LTS and Debian 12/13, Linux amd64/arm64. The starting baseline is 1 CPU and 1 GiB RAM without a capacity guarantee. With a ready VPS image, Node.js and Go are not needed on the host.
+Use the [installation and maintenance guide](../README.en.md). Installer 1.2.170 supports Ubuntu 22.04/24.04/26.04 LTS and Debian 12/13, Linux amd64/arm64. The starting baseline is 1 CPU and 1 GiB RAM without a capacity guarantee. With a ready VPS image, Node.js and Go are not needed on the host.
 
 Persistent files are `/opt/remnacust/node/.env` and `/opt/remnacust/node/docker-compose.yml`; actual paths are listed in `/opt/remnacust/FILES.txt`. Preserve `SECRET_KEY`, configuration, certificates and all three state directories from the root README. For an older container without mounts, stop it first and copy its private state with ownership and permissions; do not hide it behind empty mounts during recreation.
 
@@ -50,7 +50,7 @@ Build the Docker image from the repository root:
 docker build -f node/docker/Dockerfile -t remnacust-node:local node
 ```
 
-The Core archive in [docker](docker) is verified using SHA-256. Changing Core requires a complete adjacent Remnacust-core checkout, Go **1.27.3**, and coordinated repackaging with `python3 node/docker/package-remnacust-core.py` from the repository root. README changes do not require this. [Build guide](../docs/BUILDING.md).
+The Core archive in [docker](docker) is verified using SHA-256. Changing Core requires a complete adjacent Remnacust-core checkout, Go **1.27.4**, and coordinated repackaging with `python3 node/docker/package-remnacust-core.py` from the repository root. README changes do not require this. [Build guide](../docs/BUILDING.md).
 
 ## Core, offline operation and compatibility
 

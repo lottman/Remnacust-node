@@ -30,7 +30,7 @@ function fixture(checkpoint='/fixture/checkpoint.pb'){
     Object.assign(service,{queryBus:{execute:async()=>({})},commandBus:{execute:async()=>state.calls.push('post')},
         logger:{log(){},warn(){},error(){}},internal:{xtlsApiSocketPath:'/fixture/api.sock'},isXrayOnline:true,isXrayStartedProccesing:false,disableHashedSetCheck:false,xrayPath:'/fixture-core',xrayVersion:'fixture',nodeVersion:'fixture',
         integrations:{sync:async()=>{state.calls.push('integrations');return {}; }},managedCore:{load:async()=>({paused:false})},
-        internalService:{isNeedRestartCore:()=>true,hasConfiguration:()=>state.known!==false,hasProfileBindings:()=>!!state.profileInput,getProfileInput:()=>state.profileInput??null,extractUsersFromConfig:async(hashes,config,bindings,input)=>{state.calls.push('users');state.userConfig=config;state.bindings=bindings;state.profileInput=input;}},
+        internalService:{isNeedRestartCore:()=>true,hasConfiguration:()=>state.known!==false,hasProfileBindings:()=>!!state.profileInput,getProfileInput:()=>state.profileInput??null,cleanup:()=>{state.calls.push('clear-users');state.known=false;},setXrayConfig:config=>{state.bootConfig=config;},extractUsersFromConfig:async(hashes,config,bindings,input)=>{state.calls.push('users');state.known=true;state.userConfig=config;state.bindings=bindings;state.profileInput=input;}},
         xtlsSdk:{stats:{getSysStats:async()=>({isOk:state.stats})}},xrayProcess:{getStatus:async()=>({up:state.up,raw:state.raw??(state.up?'true 42':'false -1')})},
         liveCore:{supported:async()=>{state.calls.push('capability');return state.supported;},profilesSupported:async()=>state.graphSupported!==false,
             apply:async()=>{state.calls.push('apply');if(state.applyError)throw state.applyError instanceof Error?state.applyError:Error(state.applyError);},prepareRestart:async()=>state.calls.push('checkpoint'),
@@ -100,7 +100,7 @@ test('a running but unresponsive core is preserved instead of being mistaken for
 });
 test('only a confirmed stopped process may start from the committed port plan',async()=>{
     const f=fixture();f.state.up=false;f.service.isXrayOnline=false;const result=await f.run();assert.equal(result.response.isStarted,true);assert.equal(result.response.error,null);
-    assert.deepEqual(f.state.calls,['capability','integrations','validate','checkpoint','users','restart','post','enroll']);
+    assert.deepEqual(f.state.calls,['capability','integrations','validate','checkpoint','clear-users','restart','users','post','enroll']);
 });
 test('successful live application updates user hashes and enrollment only after the native acknowledgement',async()=>{
     const f=fixture();const result=await f.run();assert.equal(result.response.isStarted,true);assert.equal(result.response.error,null);
@@ -272,5 +272,51 @@ test('the real service replaces initial recovered globals once without weakening
             assert.equal(later.response.error, error.message);
             assert.equal(f.state.calls.includes('restart'), false);
         }
+    }
+});
+
+
+test('cold start publishes the boot configuration but acknowledges users only after private API readiness', async () => {
+    const f = fixture();
+    f.service.isXrayOnline = false;
+    f.state.up = false;
+    f.request.internals.requireLiveApply = false;
+    let began, ready;
+    const starting = new Promise(resolve => { began = resolve; });
+    f.service.restartXrayProcess = async () => {
+        f.state.calls.push('restart');
+        began();
+        await new Promise(resolve => { ready = resolve; });
+        f.state.up = true;
+        return { error: null };
+    };
+    const pending = f.run();
+    await starting;
+    assert.equal(f.state.known, false);
+    assert.deepEqual(f.state.bootConfig.inbounds, []);
+    assert.equal(f.state.calls.includes('users'), false);
+    ready();
+    const result = await pending;
+    assert.equal(result.response.isStarted, true);
+    assert.equal(result.response.error, null);
+    assert.equal(f.state.known, true);
+    assert(f.state.calls.indexOf('restart') < f.state.calls.indexOf('users'));
+});
+
+test('cold start failure cannot retain synchronized users or acknowledge a configuration', async () => {
+    for (const failure of ['restart', 'readiness']) {
+        const f = fixture();
+        f.service.isXrayOnline = false;
+        f.state.up = false;
+        f.request.internals.requireLiveApply = false;
+        f.service.restartXrayProcess = async () => ({ error: failure === 'restart' ? 'fixture launch failed' : null });
+        f.service.getXrayInternalStatus = async () => ({ isStarted: false, error: 'fixture readiness failed' });
+        f.service.dumpTailBlock = async () => [];
+        const result = await f.run();
+        assert.equal(result.response.isStarted, false);
+        assert.equal(f.service.isXrayOnline, false);
+        assert.equal(f.state.known, false);
+        assert.equal(f.state.calls.includes('users'), false);
+        assert.equal(f.state.calls.includes('enroll'), false);
     }
 });

@@ -25,3 +25,16 @@ jobs:
           chmod 755 "$REMNACUST_LISTENER_TEST_CORE"
           node --test tests/runtime-listener-process.test.cjs
       - run: npm run build
+
+      - name: Verify migration cold start with the published native runtime
+        timeout-minutes: 7
+        working-directory: .
+        run: |
+          base=ghcr.io/lottman/remnacust-node@sha256:e0ed87fe95f8ed5b7ef08bec69881ca761d885f686a1af3d241c11eaf5f6b649
+          docker pull "$base"
+          context=$(mktemp -d "$RUNNER_TEMP/remnacust-node-runtime.XXXXXXXX")
+          trap 'rm -f "$context/main.js" "$context/Dockerfile"; rmdir "$context"' EXIT
+          cp node/dist/main.js "$context/main.js"
+          printf 'FROM %s\nCOPY main.js /opt/app/dist/main.js\n' "$base" > "$context/Dockerfile"
+          docker build --tag remnacust-node:source-check "$context"
+          bash scripts/test-node-startup.sh remnacust-node:source-check

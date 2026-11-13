@@ -77,6 +77,10 @@ Compatible runtime profile changes can preserve connections; changing a listener
 
 For problems, check the API address, port, key, TLS and firewall, then Core, inbound, host, squad and subscription. An online API status does not prove the client path through a CDN works. [Installer guide](https://github.com/lottman/Remnacust-installer/blob/main/installer/README.md).
 
+### First start after migration — changes in the current checkout
+
+The authenticated health API can respond while the core is still awaiting its first configuration. Temporary HTTP 503 from core statistics and user mutations means the request was not executed and must be retried after synchronization. It never acknowledges empty counters or user removal. The panel checks health independently and delivers configuration with the current credentials, authorization and quotas. User membership becomes synchronized after the private core API is ready; a failed start cannot leave membership marked synchronized. Persisted journals and administrative pause remain intact.
+
 ## Offline operation and compatibility
 
 A running Core can serve traffic without the panel within existing rights and persisted policies. Access expiry still applies; local credit is limited by remaining grants for applicable USER/HOST/TAG quotas and their period deadlines. A calendar reset does not issue fresh credit without the panel.
@@ -95,7 +99,7 @@ Process display names are now `rc-node` and `rc-core` (Core on Linux); the `rw-c
 
 ## Build and documentation
 
-Agent development requires **Node.js 26.13 LTS**; building Core itself requires **Go 1.27.3**. From the repository root:
+Agent development requires **Node.js 26.13 LTS**; building Core itself requires **Go 1.27.4**. From the repository root:
 
 ```bash
 docker build -f node/docker/Dockerfile -t remnacust-node:local node

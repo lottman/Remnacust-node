@@ -28,6 +28,19 @@ export function privateXtlsConnectionUrl(socketPath: string): string {
     return `unix://${socketPath}`;
 }
 
+export function isPrivateXtlsSocketAvailable(socketPath: string): boolean {
+    requirePrivateSocket(socketPath, 'api.sock');
+    try {
+        const socket = lstatSync(socketPath);
+        return (
+            socket.isSocket() && socket.uid === process.getuid?.() && (socket.mode & 0o077) === 0
+        );
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+        throw error;
+    }
+}
+
 export const PRIVATE_XTLS_RECONNECT_OPTIONS = Object.freeze({
     'grpc.initial_reconnect_backoff_ms': 100,
     'grpc.max_reconnect_backoff_ms': 1000,

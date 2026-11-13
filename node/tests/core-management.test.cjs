@@ -53,8 +53,7 @@ test('device removal cannot be acknowledged during checkpoint replacement, and r
     const result=await handler.removeUser(data);assert.equal(result.isOk,true);assert.equal(result.response.success,true);
     assert.deepEqual(calls,[['remove','PORT-A',data.username],['hash','PORT-A','fixture-device']]);
     handler.internalService.hasConfiguration=()=>false;
-    const unavailable=await handler.removeUser(data);
-    assert.equal(unavailable.isOk,false);
-    assert.match(unavailable.message,/not synchronized/);
+    for (const method of ['addUser','removeUser','addUsers','removeUsers'])
+        await assert.rejects(handler[method](data), error => error.getStatus() === 503 && /not synchronized/.test(error.message));
     assert.equal(calls.length,2,'unknown node state must not acknowledge or run a user mutation');
 });

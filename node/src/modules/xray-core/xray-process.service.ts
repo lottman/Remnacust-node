@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 
 import { Injectable, Logger } from '@nestjs/common';
 
+import { isPrivateXtlsSocketAvailable } from '@common/utils/private-xtls-socket';
 import { readCoreVersion } from '@common/utils/read-core-version';
 
 const execFileAsync = promisify(execFile);
@@ -55,25 +56,39 @@ export class XrayProcessService {
         );
     }
 
+    public isApiSocketAvailable(socket = process.env.XTLS_API_SOCKET_PATH): boolean {
+        return !!socket && isPrivateXtlsSocketAvailable(socket);
+    }
+
+    public async probeApi(binary: string, socket: string, expectedPid: number): Promise<boolean> {
+        if (!this.isApiSocketAvailable(socket)) return false;
+        try {
+            const { stdout } = await execFileAsync(
+                binary,
+                ['api', 'statssys', `--server=unix:${socket}`, '--timeout=2'],
+                { timeout: 3000, maxBuffer: 8 * 1024 },
+            );
+            const response: unknown = JSON.parse(stdout);
+            const current = await this.getStatus();
+            return (
+                current.up &&
+                current.pid === expectedPid &&
+                !!response &&
+                typeof response === 'object' &&
+                !Array.isArray(response)
+            );
+        } catch {
+            return false;
+        }
+    }
+
     public async recoveryReady(binary: string, socket: string): Promise<boolean> {
         const initial = await this.getStatus();
         if (!initial.up || initial.pid === null) return false;
         for (let attempt = 0; attempt < 5; attempt++) {
-            try {
-                const { stdout } = await execFileAsync(
-                    binary,
-                    ['api', 'statssys', `--server=unix:${socket}`, '--timeout=2'],
-                    { timeout: 3000, maxBuffer: 8 * 1024 },
-                );
-                const response: unknown = JSON.parse(stdout);
-                const current = await this.getStatus();
-                if (!current.up || current.pid !== initial.pid) return false;
-                if (response && typeof response === 'object' && !Array.isArray(response))
-                    return true;
-            } catch {
-                const current = await this.getStatus();
-                if (!current.up || current.pid !== initial.pid) return false;
-            }
+            if (await this.probeApi(binary, socket, initial.pid)) return true;
+            const current = await this.getStatus();
+            if (!current.up || current.pid !== initial.pid) return false;
             if (attempt < 4) await delay(200);
         }
         return false;

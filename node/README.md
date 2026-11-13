@@ -2,7 +2,7 @@
 
 # Remnacust Node — исходники агента
 
-Агент **1.1.32** основан на Remnawave Node 3.4.3. Согласованный комплект: Installer **1.2.168**, панель/страница **1.1.7.120**, Core **1.1.19 / Xray v26.11.9**. Текущий checkout может содержать ещё не выпущенные изменения.
+Агент **1.1.33** основан на Remnawave Node 3.4.3. Согласованный комплект: Installer **1.2.170**, панель/страница **1.1.7.122**, Core **1.1.19 / Xray v26.11.9**. Текущий checkout может содержать ещё не выпущенные изменения.
 
 ## Установка готового комплекта
 
@@ -14,7 +14,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/lottman/Remnacust-installer/
 
 ## Для оператора
 
-Используйте [инструкцию установки и обслуживания](../README.md). Installer 1.2.168 поддерживает Ubuntu 22.04/24.04/26.04 LTS и Debian 12/13, Linux amd64/arm64. Начальный ориентир — 1 CPU и 1 GiB RAM без гарантии ёмкости. На VPS с готовым образом Node.js и Go на хосте не нужны.
+Используйте [инструкцию установки и обслуживания](../README.md). Installer 1.2.170 поддерживает Ubuntu 22.04/24.04/26.04 LTS и Debian 12/13, Linux amd64/arm64. Начальный ориентир — 1 CPU и 1 GiB RAM без гарантии ёмкости. На VPS с готовым образом Node.js и Go на хосте не нужны.
 
 Постоянные файлы: `/opt/remnacust/node/.env` и `/opt/remnacust/node/docker-compose.yml`; фактические пути — в `/opt/remnacust/FILES.txt`. Сохраняйте `SECRET_KEY`, конфигурацию, сертификаты и все три каталога состояния из корневого README. Старый контейнер без mounts сначала остановите и скопируйте его приватное состояние с владельцами и правами; не скрывайте его пустыми mounts при recreate.
 
@@ -50,7 +50,7 @@ Docker-образ собирается из корня репозитория:
 docker build -f node/docker/Dockerfile -t remnacust-node:local node
 ```
 
-Архив Core в [docker](docker) проверяется по SHA-256. Изменение Core требует полного соседнего checkout Remnacust-core, Go **1.27.3** и согласованной перепаковки через `python3 node/docker/package-remnacust-core.py` из корня репозитория. Для изменения README это не требуется. [Сборка](../docs/BUILDING.md).
+Архив Core в [docker](docker) проверяется по SHA-256. Изменение Core требует полного соседнего checkout Remnacust-core, Go **1.27.4** и согласованной перепаковки через `python3 node/docker/package-remnacust-core.py` из корня репозитория. Для изменения README это не требуется. [Сборка](../docs/BUILDING.md).
 
 ## Ядро, автономность и совместимость
 

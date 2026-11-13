@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { QueryBus } from '@nestjs/cqrs';
 
 import { XtlsApi } from '@remnawave/xtls-sdk';
@@ -12,6 +12,7 @@ import { GetTorrentBlockerReportsCountQuery } from '../_plugin/queries/get-torre
 import { InternalService } from '../internal/internal.service';
 import { GetInterfaceStatsQuery } from '../network-stats/queries/get-interface-stats/get-interface-stats.query';
 import { readCoreIncarnation } from '../xray-core/core-incarnation';
+import { coreManagement } from '../xray-core/core-management';
 import { readProfileTraffic } from '../xray-core/profile-traffic';
 import { XrayProcessService } from '../xray-core/xray-process.service';
 import { IGetUserOnlineStatusRequest } from './interfaces';
@@ -38,9 +39,21 @@ export class StatsService {
     ) {}
     private readonly logger = new Logger(StatsService.name);
 
+    private async requireCore(): Promise<void> {
+        if (
+            coreManagement.isBusy() ||
+            !(await this.xrayProcess.getStatus()).up ||
+            !this.xrayProcess.isApiSocketAvailable()
+        )
+            throw new ServiceUnavailableException(
+                'Xray Core is not ready; retry after synchronization',
+            );
+    }
+
     public async getUserOnlineStatus(
         body: IGetUserOnlineStatusRequest,
     ): Promise<TResult<GetUserOnlineStatusResponseModel>> {
+        await this.requireCore();
         try {
             const response = await this.xtlsSdk.stats.getUserOnlineStatus(body.username);
 
@@ -59,6 +72,7 @@ export class StatsService {
     }
 
     public async getSystemStats(): Promise<TResult<GetSystemStatsResponseModel>> {
+        await this.requireCore();
         try {
             const response = await this.xtlsSdk.stats.getSysStats();
 
@@ -103,6 +117,7 @@ export class StatsService {
     }
 
     public async getUsersStats(reset: boolean): Promise<TResult<GetUsersStatsResponseModel>> {
+        await this.requireCore();
         try {
             const before = await readCoreIncarnation(await this.xrayProcess.getStatus());
             const response = await this.xtlsSdk.stats.getAllUsersStats(reset);
@@ -141,6 +156,7 @@ export class StatsService {
         tag: string,
         reset: boolean,
     ): Promise<TResult<GetInboundStatsResponseModel>> {
+        await this.requireCore();
         try {
             const response = await this.xtlsSdk.stats.getInboundStats(tag, reset);
 
@@ -165,6 +181,7 @@ export class StatsService {
         tag: string,
         reset: boolean,
     ): Promise<TResult<GetOutboundStatsResponseModel>> {
+        await this.requireCore();
         try {
             const response = await this.xtlsSdk.stats.getOutboundStats(tag, reset);
 
@@ -188,6 +205,7 @@ export class StatsService {
     public async getAllInboundsStats(
         reset: boolean,
     ): Promise<TResult<GetAllInboundsStatsResponseModel>> {
+        await this.requireCore();
         try {
             const response = await this.xtlsSdk.stats.getAllInboundsStats(reset);
 
@@ -205,6 +223,7 @@ export class StatsService {
     public async getAllOutboundsStats(
         reset: boolean,
     ): Promise<TResult<GetAllOutboundsStatsResponseModel>> {
+        await this.requireCore();
         try {
             const response = await this.xtlsSdk.stats.getAllOutboundsStats(reset);
 
@@ -221,6 +240,7 @@ export class StatsService {
     }
 
     public async getCombinedStats(reset: boolean): Promise<TResult<GetCombinedStatsResponseModel>> {
+        await this.requireCore();
         try {
             const { isOk: isOkInbounds, data: inboundsData } =
                 await this.xtlsSdk.stats.getAllInboundsStats(reset);
@@ -262,6 +282,7 @@ export class StatsService {
     }
 
     public async getUsersIpList(): Promise<TResult<GetUsersIpListResponseModel>> {
+        await this.requireCore();
         try {
             const response = await this.xtlsSdk.stats.getUsersStats(false, false);
 
