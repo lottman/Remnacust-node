@@ -132,7 +132,7 @@ async function bootstrap(): Promise<void> {
 
     app.useGlobalPipes(new ZodValidationPipe());
 
-    await app.listen(config.getOrThrow('NODE_PORT'));
+    await app.init();
 
     const httpAdapter = app.getHttpAdapter();
     const httpServer = httpAdapter.getInstance();
@@ -150,6 +150,7 @@ async function bootstrap(): Promise<void> {
         internalServer.once('error', reject);
     });
     await chmod(internalSocketPath, 0o600);
+    await app.listen(config.getOrThrow('NODE_PORT'));
 
     let internalServerClosed = false;
 
