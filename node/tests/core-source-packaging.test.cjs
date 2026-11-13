@@ -46,7 +46,7 @@ async function fixture(t, layout = 'combined') {
     };
     for (const [name, value] of Object.entries(files)) await put(core, name, value);
     const docker = path.join(node, 'docker');
-    const run = () => execute(python, [...pythonArgs, path.join(docker, 'package-remnacust-core.py')], { timeout: 15000 });
+    const run = coreSource => execute(python, [...pythonArgs, path.join(docker, 'package-remnacust-core.py'), ...(coreSource ? ['--core-source', coreSource] : [])], { timeout: 15000 });
     const snapshot = () => Promise.all(outputs.map(name => fs.readFile(path.join(docker, name))));
     return { root, node, core, docker, run, snapshot };
 }
@@ -128,4 +128,16 @@ test('missing uTLS in a fresh combined bundle cannot create an archive or checks
     await assert.rejects(f.run(), /vendor\/utls\/go.mod/);
     assert.deepEqual(await fs.readFile(path.join(f.docker, 'Dockerfile')), recipe);
     for (const name of outputs.slice(1)) await assert.rejects(fs.access(path.join(f.docker, name)), { code: 'ENOENT' });
+});
+
+
+test('an explicit detached Core checkout is honored and invalid overrides cannot fall back or replace outputs', async t => {
+    const f = await fixture(t, 'sibling');
+    const detached = path.join(f.root, 'detached-core');
+    await fs.rename(f.core, detached);
+    await f.run(detached);
+    const previous = await f.snapshot();
+    await execute(python, [...pythonArgs, '-c', inspectArchive, path.join(f.docker, outputs[1])], { timeout: 15000 });
+    await assert.rejects(f.run(path.join(f.root, 'missing-core')), /Clone Remnacust-core/);
+    assert.deepEqual(await f.snapshot(), previous);
 });

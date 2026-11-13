@@ -1,9 +1,12 @@
 """Create the deterministic, verified source input used by the node image."""
-import gzip, hashlib, io, json, pathlib, re, tarfile
+import argparse, gzip, hashlib, io, json, pathlib, re, tarfile
 
 node = pathlib.Path(__file__).resolve().parents[1]
-workspace = node.parent
-if not (workspace / "xray/core/core.go").is_file():
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--core-source', type=pathlib.Path)
+args = parser.parse_args()
+workspace = args.core_source.resolve() if args.core_source else node.parent
+if not args.core_source and not (workspace / "xray/core/core.go").is_file():
     workspace = workspace.parent / "Remnacust-core"
 if not (workspace / "xray/core/core.go").is_file():
     raise SystemExit("Clone Remnacust-core next to Remnacust-node before repackaging the core")
