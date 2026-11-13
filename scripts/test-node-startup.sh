@@ -77,6 +77,15 @@ test "$(docker inspect -f '{{.State.Running}}' "$test_name")" = true
 
 cp "$source_root/node/tests/node-cold-start.integration.cjs" "$test_root/lifecycle.cjs"
 docker exec "$test_name" node /test/lifecycle.cjs
+docker restart "$test_name" >/dev/null
+ready=0
+for attempt in $(seq 1 35); do
+ if docker exec "$test_name" node /test/check.cjs > "$test_root/result.txt" 2>&1; then ready=1; break; fi
+ sleep 2
+done
+cat "$test_root/result.txt"
+test "$ready" = 1
+docker exec "$test_name" node /test/lifecycle.cjs restored
 if docker logs "$test_name" 2>&1 | grep -F 'Node user state is not synchronized'; then
     echo 'Expected initialization requests were logged as unexpected handler failures' >&2
     exit 1

@@ -9,7 +9,7 @@ const { HashedSet } = createRequire('/opt/app/dist/main.js')('@remnawave/hashed-
 const read = (name) => fs.readFileSync('/test/' + name);
 const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
 const payload = Buffer.from(
-    JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 180, sub: 'cold-start-test' }),
+    JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 600, sub: 'cold-start-test' }),
 ).toString('base64url');
 const content = header + '.' + payload;
 const token =
@@ -79,6 +79,7 @@ const coreId = () => {
     );
 };
 async function main() {
+    if (process.argv[2] === 'restored') return verifyRestored();
     for (let attempt = 0; attempt < 3; attempt++) {
         assert.equal((await request(statsPath)).status, 503);
         assert.equal(
@@ -154,6 +155,37 @@ async function main() {
         id,
         'unchanged authoritative configuration must not restart a running core',
     );
+    fs.writeFileSync('/tmp/remnacust-cold-start-fixture.json', JSON.stringify(body), {
+        mode: 0o600,
+    });
+    process.stdout.write(
+        'PASS cold migration: premature requests rejected, failed bind unacknowledged, 2788 users, idempotent apply; startMs=' +
+            startMs +
+            '\n',
+    );
+}
+
+async function verifyRestored() {
+    const body = JSON.parse(fs.readFileSync('/tmp/remnacust-cold-start-fixture.json', 'utf8'));
+    const clients = body.xrayConfig.inbounds[0].settings.clients;
+    const stats = await request(statsPath);
+    assert.equal(stats.status, 200, JSON.stringify(stats));
+    assert.equal(stats.data.response.userStateSynchronized, false);
+    assert.equal(
+        (
+            await request('/node/handler/remove-user', {
+                username: clients[0].email,
+                hashData: { vlessUuid: clients[0].id },
+            })
+        ).status,
+        503,
+    );
+    const id = coreId();
+    const applied = await request('/node/xray/start', body);
+    assert.equal(applied.data.response.isStarted, true, JSON.stringify(applied));
+    assert.equal(applied.data.response.error, null, JSON.stringify(applied));
+    assert.equal(coreId(), id, 'fresh identical configuration must preserve the recovered core');
+    assert.equal((await request(statsPath)).data.response.userStateSynchronized, true);
     const removed = await request('/node/handler/remove-user', {
         username: clients[0].email,
         hashData: { vlessUuid: clients[0].id },
@@ -166,10 +198,19 @@ async function main() {
     const health = await request('/node/xray/healthcheck');
     assert.equal(health.data.response.isAlive, true);
     assert.equal(health.data.response.xrayInternalStatusCached, false);
+    const stock = structuredClone(body);
+    stock.xrayConfig.geodata = { remnacustCoreFlavor: 'default' };
+    const switched = await request('/node/xray/start', stock);
+    assert.equal(switched.data.response.isStarted, true, JSON.stringify(switched));
+    assert.equal(switched.data.response.error, null, JSON.stringify(switched));
+    assert.equal((await request('/node/xray/healthcheck')).data.response.xrayVersion, '26.11.9');
+    const stockStats = await request(statsPath);
+    assert.equal(stockStats.status, 200, JSON.stringify(stockStats));
+    assert.equal(stockStats.data.response.userStateSynchronized, true);
+    assert.equal((await request('/node/xray/stop')).data.response.isStopped, true);
+    assert.equal((await request(statsPath)).status, 503);
     process.stdout.write(
-        'PASS cold migration: rejected premature stats/mutations, failed bind stayed unacknowledged, 2788-user cold start, fresh synchronization, idempotent apply, removal, explicit stop; startMs=' +
-            startMs +
-            '\n',
+        'PASS checkpoint recovery: API rebind, fresh configuration without restart, user removal, explicit stop, stock Core flavor\n',
     );
 }
 main().catch((error) => {
