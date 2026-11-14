@@ -43,7 +43,17 @@ async function fixture(t, layout = 'combined') {
         'vendor/utls/u_handshake_client.go': 'package tls\n',
         'vendor/utls/REMNACUST-PATCH.json': '{"fixture":"certificate-backport"}\n',
         'vendor/utls/certificate-decompression.patch': 'fixture patch\n',
+        'upstream-security/go.mod': 'module github.com/xtls/xray-core\n',
+        'upstream-security/go.sum': 'reviewed security sums\n',
     };
+    files['upstream-security/manifest.json'] = JSON.stringify({
+        schemaVersion: 1, policy: 'official-baseline-with-security-dependency-updates',
+        upstreamVersion: 'v26.10.31', upstreamCommit: 'a'.repeat(40), sourceArchiveSha256: 'c'.repeat(64),
+        configurationSourceSha256: '1'.repeat(64),
+        originalGoModSha256: 'e'.repeat(64), originalGoSumSha256: 'f'.repeat(64),
+        goModSha256: createHash('sha256').update(files['upstream-security/go.mod']).digest('hex'),
+        goSumSha256: createHash('sha256').update(files['upstream-security/go.sum']).digest('hex'),
+    }, null, 2) + '\n';
     for (const [name, value] of Object.entries(files)) await put(core, name, value);
     const docker = path.join(node, 'docker');
     const run = coreSource => execute(python, [...pythonArgs, path.join(docker, 'package-remnacust-core.py'), ...(coreSource ? ['--core-source', coreSource] : [])], { timeout: 15000 });
@@ -70,6 +80,11 @@ with tarfile.open(archive) as source:
     assert '.tmp-utls/REMNACUST-PATCH.json' in names
     assert '.tmp-utls/certificate-decompression.patch' in names
     assert '.tmp-olcrtc/internal/names/data/fixture.bin' in names
+    security = json.load(source.extractfile('upstream-security/manifest.json'))
+    for name, field in [('go.mod', 'goModSha256'), ('go.sum', 'goSumSha256')]:
+        assert hashlib.sha256(source.extractfile('upstream-security/' + name).read()).hexdigest() == security[field]
+    assert source.extractfile('upstream-security/original-modules.sha256').read().decode() == security['originalGoModSha256'] + '  go.mod\\n' + security['originalGoSumSha256'] + '  go.sum\\n'
+    assert source.extractfile('upstream-security/overrides.sha256').read().decode() == security['goModSha256'] + '  go.mod\\n' + security['goSumSha256'] + '  go.sum\\n'
 print('verified archive layout and all hashes')
 `;
 
@@ -104,7 +119,7 @@ test('missing or malformed upstream source checksum cannot replace packaged outp
 });
 
 test('incomplete combined source fails before replacing existing outputs', async t => {
-    for (const missing of ['vendor/utls', 'vendor/utls/go.mod', 'vendor/utls/u_handshake_client.go', 'vendor/olcrtc']) {
+    for (const missing of ['vendor/utls', 'vendor/utls/go.mod', 'vendor/utls/u_handshake_client.go', 'vendor/olcrtc', 'upstream-security', 'upstream-security/go.sum']) {
         await t.test(missing, async t => {
             const f = await fixture(t);
             await f.run();
@@ -118,6 +133,27 @@ test('incomplete combined source fails before replacing existing outputs', async
             });
             assert.deepEqual(await f.snapshot(), previous);
         });
+    }
+});
+
+test('tampered security locks or a different official baseline cannot replace packaged outputs', async t => {
+    const f = await fixture(t);
+    await f.run();
+    const previous = await f.snapshot();
+    for (const name of ['go.mod', 'go.sum']) {
+        const filename = path.join(f.core, 'upstream-security', name);
+        const original = await fs.readFile(filename);
+        await fs.appendFile(filename, '\n');
+        await assert.rejects(f.run(), /security dependency lock SHA256 mismatch/);
+        assert.deepEqual(await f.snapshot(), previous);
+        await fs.writeFile(filename, original);
+    }
+    const filename = path.join(f.core, 'upstream-security/manifest.json');
+    const manifest = JSON.parse(await fs.readFile(filename));
+    for (const change of [{ upstreamCommit: '0'.repeat(40) }, { sourceArchiveSha256: '0'.repeat(64) }, { policy: 'pristine' }]) {
+        await fs.writeFile(filename, JSON.stringify({ ...manifest, ...change }));
+        await assert.rejects(f.run(), /security dependency baseline does not match/);
+        assert.deepEqual(await f.snapshot(), previous);
     }
 });
 
@@ -140,4 +176,54 @@ test('an explicit detached Core checkout is honored and invalid overrides cannot
     await execute(python, [...pythonArgs, '-c', inspectArchive, path.join(f.docker, outputs[1])], { timeout: 15000 });
     await assert.rejects(f.run(path.join(f.root, 'missing-core')), /Clone Remnacust-core/);
     assert.deepEqual(await f.snapshot(), previous);
+});
+
+test('the actual Docker verification rejects changed original builders or module locks before copying overrides', async t => {
+    const shell = process.platform === 'win32' ? path.join(process.env.ProgramFiles, 'Git/bin/bash.exe') : '/bin/sh';
+    const recipe = await fs.readFile(path.join(__dirname, '../docker/Dockerfile'), 'utf8');
+    const stage = recipe.split(' AS xray-default-build')[1].split('\nFROM ')[0];
+    const command = stage.match(/^RUN export LC_ALL=C[\s\S]*?(?=\n\s*\n)/m)?.[0];
+    assert(command);
+    const verification = command.replace(/^RUN /, '').replace(/\\\r?\n/g, ' ')
+        .split('&& go mod verify')[0].replaceAll('/tmp/upstream-security', '../security').trim();
+    assert(verification.includes('cp ../security/go.mod ../security/go.sum .'));
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'remnacust-default-source-verification-'));
+    t.after(() => fs.rm(root, { recursive: true, force: true }));
+    const source = path.join(root, 'source');
+    const originals = {
+        'go.mod': 'module example.org/official-fixture\n',
+        'go.sum': 'original module checksum fixture\n',
+        'infra/conf/a.go': 'package conf\nvar A = 1\n',
+        'infra/conf/z.go': 'package conf\nvar Z = 2\n',
+        'infra/conf/a_test.go': 'excluded test fixture\n',
+    };
+    const overrides = { 'go.mod': 'reviewed security module fixture\n', 'go.sum': 'reviewed security checksum fixture\n' };
+    const sha = value => createHash('sha256').update(value).digest('hex');
+    const builders = createHash('sha256');
+    for (const name of ['a.go', 'z.go']) builders.update(name + '\0' + originals['infra/conf/' + name]);
+    const manifest = {
+        upstreamCommit: 'a'.repeat(40), configurationSourceSha256: builders.digest('hex'),
+        originalGoModSha256: sha(originals['go.mod']), originalGoSumSha256: sha(originals['go.sum']),
+        goModSha256: sha(overrides['go.mod']), goSumSha256: sha(overrides['go.sum']),
+    };
+    const reset = async () => {
+        for (const [name, value] of Object.entries(originals)) await put(source, name, value);
+        for (const [name, value] of Object.entries(overrides)) await put(root, 'security/' + name, value);
+        await put(root, 'security/manifest.json', JSON.stringify(manifest, null, 2) + '\n');
+        await put(root, 'security/original-modules.sha256', manifest.originalGoModSha256 + '  go.mod\n' + manifest.originalGoSumSha256 + '  go.sum\n');
+        await put(root, 'security/overrides.sha256', manifest.goModSha256 + '  go.mod\n' + manifest.goSumSha256 + '  go.sum\n');
+    };
+    const run = () => execute(shell, ['-c', verification], { cwd: source, timeout: 15000,
+        env: { ...process.env, XRAY_DEFAULT_COMMIT: manifest.upstreamCommit } });
+    await reset();
+    await run();
+    for (const [name, value] of Object.entries(overrides))
+        assert.equal(await fs.readFile(path.join(source, name), 'utf8'), value);
+    for (const name of ['source/infra/conf/a.go', 'source/go.mod', 'source/go.sum', 'security/go.mod', 'security/go.sum']) {
+        await reset();
+        await fs.appendFile(path.join(root, name), '\n');
+        const before = await Promise.all(['go.mod', 'go.sum'].map(name => fs.readFile(path.join(source, name))));
+        await assert.rejects(run());
+        assert.deepEqual(await Promise.all(['go.mod', 'go.sum'].map(name => fs.readFile(path.join(source, name)))), before);
+    }
 });

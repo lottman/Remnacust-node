@@ -1,6 +1,7 @@
 # BuildKit is required for cache mounts.
 
-FROM node:26.13.0-trixie-slim AS build
+FROM node:26.13.1-trixie-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc AS build
+RUN npm install --global --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org npm@12.2.2 && test "$(npm --version)" = "12.2.2"
 
 WORKDIR /opt/app
 
@@ -18,7 +19,7 @@ RUN npm run build \
     && chmod +x dist/cli.js
 
 
-FROM golang:1.27.4-alpine AS xray-device-build
+FROM golang:1.27.4-alpine@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf AS xray-device-build
 
 ARG XRAY_CORE_VERSION=v26.11.9
 ARG XRAY_CORE_COMMIT=676eaf66f8f05d4d558ee7a74b4736623d3feeb9
@@ -37,20 +38,28 @@ RUN go test github.com/refraction-networking/utls -run '^TestRemnacustCertificat
     && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X github.com/xtls/xray-core/core.build=Remnacust-${CORE_VERSION}" -o /tmp/xray ./main
 
 
-FROM golang:1.27.4-alpine AS xray-default-build
+FROM golang:1.27.4-alpine@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf AS xray-default-build
 
 ARG XRAY_DEFAULT_COMMIT=676eaf66f8f05d4d558ee7a74b4736623d3feeb9
 ARG XRAY_DEFAULT_SOURCE_SHA256=05623c5394d82870edcfdd9355169b05453da133544355012b2cd1874e67f100
+COPY --from=xray-device-build /src/upstream-security /tmp/upstream-security
 RUN apk add --no-cache curl unzip \
     && curl -fsSL --proto '=https' --proto-redir '=https' "https://codeload.github.com/XTLS/Xray-core/zip/${XRAY_DEFAULT_COMMIT}" -o /tmp/source.zip \
     && echo "${XRAY_DEFAULT_SOURCE_SHA256}  /tmp/source.zip" | sha256sum -c - \
     && unzip -q /tmp/source.zip -d /src \
     && rm /tmp/source.zip
 WORKDIR /src/Xray-core-${XRAY_DEFAULT_COMMIT}
-RUN CGO_ENABLED=0 go build -buildvcs=false -trimpath -ldflags "-s -w" -o /tmp/xray ./main
+RUN export LC_ALL=C \
+    && test "$(sed -n 's/^  "upstreamCommit": "\([a-f0-9]*\)",$/\1/p' /tmp/upstream-security/manifest.json)" = "${XRAY_DEFAULT_COMMIT}" \
+    && sha256sum -c /tmp/upstream-security/original-modules.sha256 \
+    && test "$(for builder in infra/conf/*.go; do case "$builder" in *_test.go) continue;; esac; printf '%s\000' "${builder##*/}"; cat "$builder"; done | sha256sum | cut -d ' ' -f 1)" = "$(sed -n 's/^  "configurationSourceSha256": "\([a-f0-9]*\)",$/\1/p' /tmp/upstream-security/manifest.json)" \
+    && (cd /tmp/upstream-security && sha256sum -c overrides.sha256) \
+    && cp /tmp/upstream-security/go.mod /tmp/upstream-security/go.sum . \
+    && go mod verify \
+    && CGO_ENABLED=0 go build -mod=readonly -buildvcs=false -trimpath -ldflags "-s -w -X github.com/xtls/xray-core/core.build=Upstream-SecurityDeps" -o /tmp/xray ./main
 
 
-FROM alpine:3.21 AS xray
+FROM alpine:3.24.4@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS xray
 
 ARG XRAY_CORE_VERSION=v26.11.9
 ARG UPSTREAM_REPO=XTLS
@@ -74,7 +83,7 @@ RUN apk add --no-cache curl \
     && rm -rf "/tmp/${ARCHIVE}" /tmp/xray /tmp/xray.dgst
 
 
-FROM alpine:3.21 AS asn
+FROM alpine:3.24.4@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS asn
 
 ARG ASN_LMDB_URL=https://github.com/remnawave/asn-index/releases/latest/download/asn-prefixes.lmdb.zst
 
@@ -89,7 +98,7 @@ RUN mkdir -p /usr/local/share/asn \
     && rm -f /tmp/asn-prefixes.lmdb.zst
 
 
-FROM golang:1.27.4-alpine AS geocheck
+FROM golang:1.27.4-alpine@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf AS geocheck
 ARG GEOCHECK_VERSION=0.3.0
 ARG GEOCHECK_COMMIT=50e084bb3ed34b55fc6839fe0dc4bafd9fe275fc
 RUN apk add --no-cache git
@@ -106,22 +115,23 @@ RUN git init . \
 FROM scratch AS integration-bin
 
 
-FROM alpine:3.21 AS certificates
+FROM alpine:3.24.4@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS certificates
 RUN apk add --no-cache ca-certificates
 
-FROM node:26.13.0-trixie-slim
+FROM node:26.13.1-trixie-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc
 COPY --from=certificates /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 ARG S6_OVERLAY_VERSION=3.2.3.2
 
 LABEL org.opencontainers.image.title="Remnacust Node"
-LABEL org.opencontainers.image.version="1.1.34"
+LABEL org.opencontainers.image.version="1.1.35"
 LABEL org.opencontainers.image.description="Remnacust Node with built-in XRay Core"
 LABEL org.opencontainers.image.url="https://github.com/lottman/Remnacust-node"
 LABEL org.opencontainers.image.source="https://github.com/lottman/Remnacust-node"
 LABEL org.opencontainers.image.vendor="Remnacust"
 LABEL org.opencontainers.image.licenses="AGPL-3.0"
 LABEL org.opencontainers.image.documentation="https://docs.rw"
+LABEL io.remnacust.xray-default.source-policy="official-baseline-with-security-dependency-updates"
 
 WORKDIR /opt/app
 
@@ -129,6 +139,7 @@ COPY --from=build /opt/app/dist ./dist
 
 COPY --from=xray-device-build /tmp/xray /usr/local/bin/xray
 COPY --from=xray-default-build /tmp/xray /usr/local/bin/xray-default
+COPY --from=xray-default-build /tmp/upstream-security/manifest.json /usr/local/share/xray/default-security-manifest.json
 COPY --from=xray /usr/local/share/xray/geoip.dat /usr/local/share/xray/geoip.dat
 COPY --from=xray /usr/local/share/xray/geosite.dat /usr/local/share/xray/geosite.dat
 COPY --from=asn /usr/local/share/asn /usr/local/share/asn

@@ -2,7 +2,7 @@
 
 # Remnacust Node — agent source
 
-Agent **1.1.33** is based on Remnawave Node 3.4.3. Coordinated components are Installer **1.2.170**, panel/page **1.1.7.122**, and Core **1.1.19 / Xray v26.11.9**. The current checkout may contain unreleased changes.
+Agent **1.1.35** is based on Remnawave Node 3.4.3. Coordinated components are Installer **1.2.172**, panel/page **1.1.7.124**, and Core **1.1.21 / Xray v26.11.9**. The current checkout may contain unreleased changes.
 
 ## Install ready components
 
@@ -14,7 +14,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/lottman/Remnacust-installer/
 
 ## For operators
 
-Use the [installation and maintenance guide](../README.en.md). Installer 1.2.170 supports Ubuntu 22.04/24.04/26.04 LTS and Debian 12/13, Linux amd64/arm64. The starting baseline is 1 CPU and 1 GiB RAM without a capacity guarantee. With a ready VPS image, Node.js and Go are not needed on the host.
+Use the [installation and maintenance guide](../README.en.md). Installer 1.2.172 supports Ubuntu 22.04/24.04/26.04 LTS and Debian 12/13, Linux amd64/arm64. The starting baseline is 1 CPU and 1 GiB RAM without a capacity guarantee. With a ready VPS image, Node.js and Go are not needed on the host.
 
 Persistent files are `/opt/remnacust/node/.env` and `/opt/remnacust/node/docker-compose.yml`; actual paths are listed in `/opt/remnacust/FILES.txt`. Preserve `SECRET_KEY`, configuration, certificates and all three state directories from the root README. For an older container without mounts, stop it first and copy its private state with ownership and permissions; do not hide it behind empty mounts during recreation.
 
@@ -33,7 +33,7 @@ The external API requires mTLS and JWT. Separate API access rules from client in
 
 ## Development and checks
 
-**Node.js 26.13 LTS** is required. From this directory:
+**Node.js 26.13.1 LTS** is required. From this directory:
 
 ```bash
 npm ci
@@ -54,7 +54,7 @@ The Core archive in [docker](docker) is verified using SHA-256. Changing Core re
 
 ## Core, offline operation and compatibility
 
-The image ships custom Core 1.1.16 and separate stock Xray v26.10.31. The panel's global mode defaults to custom; an absent flavor field preserves older panel behavior. An explicit binary switch uses preflight and restart/rollback; changing mode cannot bypass incompatible quotas, policies or live port plans. A verified managed custom Core is preserved instead of being reset to the bundled binary for compatible custom applies.
+The image ships custom Core 1.1.21 and a separate Xray v26.11.9 built from the official baseline with security dependency updates. The panel's global mode defaults to custom; an absent flavor field preserves older panel behavior. An explicit binary switch uses preflight and restart/rollback; changing mode cannot bypass incompatible quotas, policies or live port plans. A verified managed custom Core is preserved instead of being reset to the bundled binary for compatible custom applies.
 
 The agent and Core are updated separately; the image includes a bundled core, but a selected managed Core may remain pinned. Check the active version rather than only the image version. Replacing the process can interrupt connections.
 

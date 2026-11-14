@@ -9,27 +9,34 @@ jobs:
       run:
         working-directory: node
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
-          node-version: 26.13.0
+          node-version: 26.13.1
+          package-manager-cache: false
+      - name: Use npm 12.2.2
+        run: npm install --global --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org npm@12.2.2 && test "$(npm --version)" = "12.2.2"
       - run: npm ci
+      - run: npm audit --package-lock-only --audit-level=low
       - run: npm run typecheck
       - run: node --test tests/*.test.cjs
-      - name: Verify automatic listener replacement and rollback with the published native core
-        env:
-          REMNACUST_LISTENER_TEST_CORE: ${{ runner.temp }}/remnacust-listener-core
-        run: |
-          curl --fail --location --proto '=https' --proto-redir '=https' --max-filesize 201326592 https://github.com/lottman/Remnacust-core/releases/download/v1.1.18/remnacust-core-1.1.18-linux-amd64 -o "$REMNACUST_LISTENER_TEST_CORE"
-          printf '1d14f8a6419c3a705f45310620c2eacd2f649f50051a1e362d5a2019c44f86b9  %s\n' "$REMNACUST_LISTENER_TEST_CORE" | sha256sum -c
-          chmod 755 "$REMNACUST_LISTENER_TEST_CORE"
-          node --test tests/runtime-listener-process.test.cjs
-      - run: npm run build
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: '1.27.4'
           cache-dependency-path: node/docker/remnacust-core.tar.gz.sha256
-
+      - name: Verify automatic listener replacement and rollback with the current verified core
+        env:
+          REMNACUST_LISTENER_TEST_CORE: ${{ runner.temp }}/remnacust-listener-core
+        run: |
+          set -euo pipefail
+          (cd docker && sha256sum -c remnacust-core.tar.gz.sha256)
+          source=$(mktemp -d "$RUNNER_TEMP/remnacust-listener-source.XXXXXXXX")
+          tar -xzf docker/remnacust-core.tar.gz -C "$source"
+          (cd "$source" && sha256sum -c core-source.sha256 > /dev/null)
+          (cd "$source/Xray-core-main" && CGO_ENABLED=0 go build -buildvcs=false -trimpath -o "$REMNACUST_LISTENER_TEST_CORE" ./main)
+          "$REMNACUST_LISTENER_TEST_CORE" version
+          node --test tests/runtime-listener-process.test.cjs
+      - run: npm run build
       - name: Verify migration cold start with the current verified core source
         timeout-minutes: 15
         working-directory: .

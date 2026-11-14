@@ -15,12 +15,13 @@ sources = [
     ('Xray-core-main', 'xray', ('go.mod', 'go.sum', 'core/core.go', 'REMNACUST-UPSTREAM.json')),
     ('.tmp-olcrtc', 'vendor/olcrtc', ('go.mod', 'go.sum', 'LICENSE', 'pkg/olcrtc/tunnel/tunnel.go')),
     ('.tmp-utls', 'vendor/utls', ('go.mod', 'go.sum', 'LICENSE', 'u_handshake_client.go', 'REMNACUST-PATCH.json', 'certificate-decompression.patch')),
+    ('upstream-security', 'upstream-security', ('manifest.json', 'go.mod', 'go.sum')),
 ]
 missing = [f'{source_folder}/{required}' for _, source_folder, required_files in sources
            for required in required_files if not (workspace / source_folder / required).is_file()]
 if missing:
     raise SystemExit('Incomplete Core source input at ' + str(workspace) + ': missing required files: ' +
-                     ', '.join(missing) + '. Preserve xray/, vendor/olcrtc/ and vendor/utls/ in the source bundle; outputs were not changed.')
+                     ', '.join(missing) + '. Preserve xray/, vendor/olcrtc/, vendor/utls/ and upstream-security/ in the source bundle; outputs were not changed.')
 
 files = {}
 for folder, source_folder, _ in sources:
@@ -43,6 +44,22 @@ if not re.fullmatch(r'v[0-9][A-Za-z0-9.+-]*', source['upstreamVersion']) or not 
 archive_hash = source.get('upstreamSourceZipSha256', '')
 if not re.fullmatch(r'[a-f0-9]{64}', archive_hash):
     raise SystemExit('Missing verified upstream source archive checksum; outputs were not changed')
+security = json.loads(files['upstream-security/manifest.json'])
+if (security.get('schemaVersion') != 1 or security.get('policy') != 'official-baseline-with-security-dependency-updates'
+        or any(security.get(field) != source[field] for field in ['upstreamVersion', 'upstreamCommit'])
+        or security.get('sourceArchiveSha256') != archive_hash):
+    raise SystemExit('Default security dependency baseline does not match the official source; outputs were not changed')
+for name, field in [('go.mod', 'goModSha256'), ('go.sum', 'goSumSha256')]:
+    if hashlib.sha256(files['upstream-security/' + name]).hexdigest() != security.get(field):
+        raise SystemExit('Default security dependency lock SHA256 mismatch: ' + name + '; outputs were not changed')
+for field in ['configurationSourceSha256', 'originalGoModSha256', 'originalGoSumSha256']:
+    if not re.fullmatch(r'[a-f0-9]{64}', security.get(field, '')):
+        raise SystemExit('Missing original upstream module SHA256; outputs were not changed')
+files['upstream-security/original-modules.sha256'] = (
+    security['originalGoModSha256'] + '  go.mod\n' + security['originalGoSumSha256'] + '  go.sum\n').encode()
+files['upstream-security/overrides.sha256'] = (
+    security['goModSha256'] + '  go.mod\n' + security['goSumSha256'] + '  go.sum\n').encode()
+
 dockerfile = docker / 'Dockerfile'
 recipe = dockerfile.read_text(encoding='utf-8')
 recipe, versions = re.subn(r'(?m)^ARG XRAY_CORE_VERSION=\S+$', 'ARG XRAY_CORE_VERSION=' + source['upstreamVersion'], recipe)

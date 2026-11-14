@@ -8,16 +8,16 @@ The Remnacust agent receives panel configuration, manages Xray and reports stati
 
 | Component | Version |
 | --- | --- |
-| Installer | [1.2.171](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.171) |
-| Panel and subscription page | [1.1.7.123](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.123) |
-| Node | [1.1.34](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.34), based on Remnawave Node 3.4.3 |
-| Core | [1.1.20](https://github.com/lottman/Remnacust-core/releases/tag/v1.1.20), Xray v26.11.9 |
+| Installer | [1.2.172](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.172) |
+| Panel and subscription page | [1.1.7.124](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.124) |
+| Node | [1.1.35](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.35), based on Remnawave Node 3.4.3 |
+| Core | [1.1.21](https://github.com/lottman/Remnacust-core/releases/tag/v1.1.21), Xray v26.11.9 |
 
 The agent and core have independent versions. Updating the panel does not update remote nodes. The current branch may contain unreleased changes.
 
 ## VPS installation
 
-Installer 1.2.171 supports **Ubuntu 22.04/24.04/26.04 LTS and Debian 12/13**, Linux **amd64/arm64**.
+Installer 1.2.172 supports **Ubuntu 22.04/24.04/26.04 LTS and Debian 12/13**, Linux **amd64/arm64**.
 
 The starting baseline is **1 CPU and 1 GiB RAM**, without a guaranteed user count, connection count or throughput. Resource use depends on transport, rules, encryption and load. VPS deployments use ready Docker images; Node.js and Go are not needed on the host.
 
@@ -88,6 +88,10 @@ A running Core can serve traffic without the panel within existing rights and pe
 A day of offline operation requires enough validity time and local credit for expected traffic and recovery. Restart also requires compatible versions and persisted configuration, credentials and journals. This is not an unconditional 24-hour guarantee for every older installation. [Offline operation requirements](https://github.com/lottman/Remnacust-panel/blob/main/docs/NODE-AUTONOMY.md).
 
 Ordinary Remnawave Node/Xray support standard configurations within their capabilities; they do not automatically gain Remnacust quota, device or recovery extensions. Do not bypass policy checks to install an older core. Xera HTTP (`network: "xera-http"`) requires compatible clients and servers; standard XHTTP is a separate transport. [Compatibility](docs/NODE-COMPATIBILITY.md) · [Limit scopes](https://github.com/lottman/Remnacust-panel/blob/main/docs/HOST-LIMITS.md).
+
+## Node 1.1.35 / Core 1.1.21
+
+Updates the bundled custom Core, Node.js 26.13.1 LTS and compatible dependencies. Preserves core modes, quotas, state recovery and readiness checks. [1.1.35](docs/releases/1.1.35.md).
 
 ## Node 1.1.34 / Core 1.1.20
 
