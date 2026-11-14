@@ -60,6 +60,12 @@ function request(path, data) {
     });
 }
 const statsPath = '/node/stats/get-system-stats';
+async function assertHealthReady(ready) {
+    const result = await request('/node/xray/healthcheck');
+    assert.equal(result.status, 200, JSON.stringify(result));
+    assert.equal(result.data.response.isAlive, true);
+    assert.equal(result.data.response.xrayInternalStatusCached, ready);
+}
 const coreId = () => {
     const status = execFileSync('/command/s6-svstat', ['-o', 'up,pid', '/run/service/xray'], {
         timeout: 2000,
@@ -113,6 +119,7 @@ async function leaveOrphanSocket() {
 
 async function main() {
     if (process.argv[2] === 'restored') return verifyRestored();
+    await assertHealthReady(false);
     for (let attempt = 0; attempt < 3; attempt++) {
         assert.equal((await request(statsPath)).status, 503);
         assert.equal(
@@ -166,6 +173,7 @@ async function main() {
         assert.equal(failed.data.response.isStarted, false, JSON.stringify(failed));
         assert(failed.data.response.error);
         assert.equal((await request(statsPath)).status, 503);
+        await assertHealthReady(false);
     } finally {
         await new Promise((resolve) => blocker.close(resolve));
     }
@@ -179,6 +187,7 @@ async function main() {
     const stats = await request(statsPath);
     assert.equal(stats.status, 200, JSON.stringify(stats));
     assert.equal(stats.data.response.userStateSynchronized, true);
+    await assertHealthReady(true);
     const id = coreId();
     assert(id);
     const repeated = await request('/node/xray/start', body);
@@ -205,6 +214,7 @@ async function verifyRestored() {
     const stats = await request(statsPath);
     assert.equal(stats.status, 200, JSON.stringify(stats));
     assert.equal(stats.data.response.userStateSynchronized, false);
+    await assertHealthReady(true);
     assert.equal(
         (
             await request('/node/handler/remove-user', {
@@ -238,10 +248,12 @@ async function verifyRestored() {
     assert.equal(switched.data.response.isStarted, true, JSON.stringify(switched));
     assert.equal(switched.data.response.error, null, JSON.stringify(switched));
     assert.equal((await request('/node/xray/healthcheck')).data.response.xrayVersion, '26.11.9');
+    await assertHealthReady(true);
     const stockStats = await request(statsPath);
     assert.equal(stockStats.status, 200, JSON.stringify(stockStats));
     assert.equal(stockStats.data.response.userStateSynchronized, true);
     assert.equal((await request('/node/xray/stop')).data.response.isStopped, true);
+    await assertHealthReady(false);
     assert.equal((await request(statsPath)).status, 503);
     process.stdout.write(
         'PASS checkpoint recovery: API rebind, fresh configuration without restart, user removal, explicit stop, stock Core flavor\n',

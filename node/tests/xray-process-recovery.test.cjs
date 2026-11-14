@@ -4,10 +4,14 @@ const path = require('node:path');
 const load = require('./load-typescript.cjs');
 
 function fixture() {
-    const state = { calls: [], up: true, pid: 42, output: '{}', failures: 0, waits: 0, warnings: 0 };
+    const state = { calls: [], up: true, pid: 42, output: '{}', failures: 0, waits: 0, warnings: 0,
+        socketIdentity: 'socket-1', afterProbe: null };
     const { XrayProcessService } = load(path.join(__dirname, '../src/modules/xray-core/xray-process.service.ts'), {
         '@common/utils/read-core-version': {},
-        '@common/utils/private-xtls-socket': { isPrivateXtlsSocketAvailable: () => true },
+        '@common/utils/private-xtls-socket': {
+            isPrivateXtlsSocketAvailable: () => state.socketIdentity !== null,
+            privateXtlsSocketIdentity: () => state.socketIdentity,
+        },
         '@nestjs/common': { Injectable: () => x => x, Logger: class { warn() { state.warnings++; } } },
         'node:util': { promisify: fn => (...args) => new Promise((resolve, reject) => fn(...args,
             (error, stdout, stderr) => error ? reject(error) : resolve({ stdout, stderr }))) },
@@ -15,7 +19,10 @@ function fixture() {
         'node:child_process': { execFile: (binary, args, options, callback) => {
             state.calls.push({ binary, args, options });
             if (state.failures-- > 0) callback(Error('unavailable'));
-            else callback(null, state.output, '');
+            else {
+                state.afterProbe?.();
+                callback(null, state.output, '');
+            }
         } },
     });
     const service = new XrayProcessService();
@@ -89,4 +96,16 @@ test('lifecycle probing never invokes the persistent SDK and never spawns a core
     state.pid = 43;
     assert.equal(await service.probeApi('/fixture-core', '/private/api.sock', 42), false);
     assert.equal(state.calls[0].options.timeout, 3000);
+});
+
+test('private readiness rejects socket replacement or disappearance during the RPC even with the same PID', async () => {
+    for (const identity of ['socket-2', null]) {
+        const { state, service } = fixture();
+        state.afterProbe = () => { state.socketIdentity = identity; };
+        assert.equal(await service.probeApi('/fixture-core', '/private/api.sock', 42), false);
+        assert.equal(state.calls.length, 1);
+        state.afterProbe = null;
+        state.socketIdentity = 'socket-3';
+        assert.equal(await service.probeApi('/fixture-core', '/private/api.sock', 42), true);
+    }
 });

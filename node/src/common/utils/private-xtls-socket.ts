@@ -30,14 +30,18 @@ export function privateXtlsConnectionUrl(socketPath: string): string {
 }
 
 export function isPrivateXtlsSocketAvailable(socketPath: string): boolean {
+    return privateXtlsSocketIdentity(socketPath) !== null;
+}
+
+export function privateXtlsSocketIdentity(socketPath: string): string | null {
     requirePrivateSocket(socketPath, 'api.sock');
     try {
         const socket = lstatSync(socketPath);
-        return (
-            socket.isSocket() && socket.uid === process.getuid?.() && (socket.mode & 0o077) === 0
-        );
+        if (!socket.isSocket() || socket.uid !== process.getuid?.() || (socket.mode & 0o077) !== 0)
+            return null;
+        return `${socket.dev}:${socket.ino}:${socket.ctimeMs}`;
     } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
         throw error;
     }
 }

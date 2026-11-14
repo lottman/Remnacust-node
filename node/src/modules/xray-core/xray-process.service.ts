@@ -7,6 +7,7 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import {
     isPrivateXtlsSocketAvailable,
+    privateXtlsSocketIdentity,
     removeStalePrivateXtlsSocket,
 } from '@common/utils/private-xtls-socket';
 import { readCoreVersion } from '@common/utils/read-core-version';
@@ -69,9 +70,15 @@ export class XrayProcessService {
         return !!socket && isPrivateXtlsSocketAvailable(socket);
     }
 
+    public getApiSocketIdentity(socket = process.env.XTLS_API_SOCKET_PATH): string | null {
+        return socket ? privateXtlsSocketIdentity(socket) : null;
+    }
+
     public async probeApi(binary: string, socket: string, expectedPid: number): Promise<boolean> {
         if (!this.isApiSocketAvailable(socket)) return false;
         try {
+            const identity = privateXtlsSocketIdentity(socket);
+            if (identity === null) return false;
             const { stdout } = await execFileAsync(
                 binary,
                 ['api', 'statssys', `--server=unix:${socket}`, '--timeout=2'],
@@ -82,6 +89,7 @@ export class XrayProcessService {
             return (
                 current.up &&
                 current.pid === expectedPid &&
+                privateXtlsSocketIdentity(socket) === identity &&
                 !!response &&
                 typeof response === 'object' &&
                 !Array.isArray(response)

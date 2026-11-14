@@ -8,16 +8,16 @@
 
 | Компонент | Версия |
 | --- | --- |
-| Installer | [1.2.172](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.172) |
-| Панель и страница подписки | [1.1.7.124](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.124) |
-| Node | [1.1.35](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.35), основа Remnawave Node 3.4.3 |
+| Installer | [1.2.173](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.173) |
+| Панель и страница подписки | [1.1.7.125](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.125) |
+| Node | [1.1.36](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.36), основа Remnawave Node 3.4.3 |
 | Core | [1.1.21](https://github.com/lottman/Remnacust-core/releases/tag/v1.1.21), Xray v26.11.9 |
 
 Версии агента и ядра независимы. Обновление панели не обновляет удалённую ноду. Текущая ветка может содержать ещё не выпущенные изменения.
 
 ## Установка на VPS
 
-Installer 1.2.172 поддерживает **Ubuntu 22.04/24.04/26.04 LTS и Debian 12/13**, Linux **amd64/arm64**.
+Installer 1.2.173 поддерживает **Ubuntu 22.04/24.04/26.04 LTS и Debian 12/13**, Linux **amd64/arm64**.
 
 Начальный ориентир — **1 CPU и 1 GiB RAM**, без гарантии числа пользователей, соединений или пропускной способности. Расход ресурсов зависит от транспорта, правил, шифрования и нагрузки. На VPS используются готовые Docker-образы; Node.js и Go на хосте не нужны.
 
@@ -88,6 +88,10 @@ Health API может отвечать, пока Core ещё ожидает пе
 Для суток автономности нужен запас срока и локального кредита на ожидаемый трафик и восстановление. Restart дополнительно требует совместимых версий, сохранённых конфигурации, credentials и журналов. Это не безусловная гарантия 24 часов для любой старой установки. [Условия автономности](https://github.com/lottman/Remnacust-panel/blob/main/docs/NODE-AUTONOMY.md).
 
 Обычные Remnawave Node/Xray совместимы со стандартными конфигурациями в пределах своих возможностей; они не получают автоматически расширения Remnacust для квот, устройств и восстановления. Не обходите проверки политик для установки старого ядра. Xera HTTP (`network: "xera-http"`) требует совместимых клиента и сервера; стандартный XHTTP — отдельный транспорт. [Совместимость](docs/NODE-COMPATIBILITY.md) · [Области лимитов](https://github.com/lottman/Remnacust-panel/blob/main/docs/HOST-LIMITS.md).
+
+## Node 1.1.36 / Core 1.1.21
+
+Health-check различает доступность API ноды и свежесть подтверждения Core. Устаревший успешный кэш не подтверждает восстановление; явный отказ Core и ошибки SOCKS-прокси не должны выглядеть как online. Сохранены исправления и зависимости комплекта 1.1.35; Core остаётся 1.1.21. [Изменения 1.1.36](docs/releases/1.1.36.md).
 
 ## Node 1.1.35 / Core 1.1.21
 

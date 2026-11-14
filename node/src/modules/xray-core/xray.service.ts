@@ -85,7 +85,15 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly xrayPath: string;
 
     private xrayVersion: null | string = null;
-    private isXrayOnline: boolean = false;
+    private xrayOnlineState = { value: false };
+    private pendingHealthProbe?: Promise<boolean>;
+    private get isXrayOnline(): boolean {
+        return this.xrayOnlineState?.value ?? false;
+    }
+    private set isXrayOnline(value: boolean) {
+        this.xrayOnlineState = { value };
+        this.pendingHealthProbe = undefined;
+    }
     private restoredUnclaimedConfiguration = false;
     private isXrayStartedProccesing: boolean = false;
     private nodeVersion: string = '0.0.0';
@@ -1032,29 +1040,78 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
         if (await this.liveCore.supported(this.xrayPath)) this.watchdog.arm(true);
     }
 
+    private checkCoreReadiness(): Promise<boolean> {
+        const busy = () => coreManagement.isBusy() || this.isXrayStartedProccesing;
+        if (busy()) return Promise.resolve(false);
+        if (this.pendingHealthProbe) return this.pendingHealthProbe;
+        const state = this.xrayOnlineState;
+        const check = async () => {
+            let ready = false;
+            try {
+                const status = await this.xrayProcess.getStatus();
+                if (busy() || state !== this.xrayOnlineState) return false;
+                if (
+                    status.up &&
+                    status.pid !== null &&
+                    Number.isSafeInteger(status.pid) &&
+                    status.pid > 0
+                ) {
+                    const socketIdentity = this.xrayProcess.getApiSocketIdentity(
+                        this.internal.xtlsApiSocketPath,
+                    );
+                    if (socketIdentity !== null) {
+                        ready = await this.xrayProcess.probeApi(
+                            this.xrayPath,
+                            this.internal.xtlsApiSocketPath,
+                            status.pid,
+                        );
+                        const current = await this.xrayProcess.getStatus();
+                        ready =
+                            ready &&
+                            current.up &&
+                            current.pid === status.pid &&
+                            this.xrayProcess.getApiSocketIdentity(this.internal.xtlsApiSocketPath) ===
+                                socketIdentity;
+                    }
+                }
+            } catch (error) {
+                if (!busy() && state === this.xrayOnlineState) state.value = false;
+                throw error;
+            }
+            if (busy() || state !== this.xrayOnlineState) return false;
+            state.value = ready;
+            return ready;
+        };
+        const pending = check();
+        this.pendingHealthProbe = pending;
+        const complete = () => {
+            if (this.pendingHealthProbe === pending) this.pendingHealthProbe = undefined;
+        };
+        void pending.then(complete, complete);
+        return pending;
+    }
+
     public async getNodeHealthCheck(): Promise<TResult<GetNodeHealthCheckResponseModel>> {
         try {
-            const status = await this.xrayProcess.getStatus();
-            if (!status.up) this.isXrayOnline = false;
-            else if (
-                !this.isXrayOnline &&
-                !coreManagement.isBusy() &&
-                this.xrayProcess.isApiSocketAvailable()
-            )
-                this.isXrayOnline = await this.xrayProcess.probeApi(
-                    this.xrayPath,
-                    this.internal.xtlsApiSocketPath,
-                    status.pid!,
-                );
+            const [supported, portPlan, profilesSupported] = await Promise.all([
+                this.liveCore.supported(this.xrayPath).catch(() => false),
+                this.portPlans.read(),
+                this.liveCore.profilesSupported(this.xrayPath).catch(() => false),
+            ]);
+            const state = this.xrayOnlineState;
+            const ready = await this.checkCoreReadiness();
             return ok(
                 new GetNodeHealthCheckResponseModel(
                     true,
-                    this.isXrayOnline,
+                    ready &&
+                        state === this.xrayOnlineState &&
+                        !coreManagement.isBusy() &&
+                        !this.isXrayStartedProccesing,
                     this.xrayVersion,
                     this.nodeVersion,
-                    await this.liveCore.supported(this.xrayPath).catch(() => false),
-                    (await this.portPlans.read())?.delivery?.epoch ?? '0',
-                    await this.liveCore.profilesSupported(this.xrayPath).catch(() => false),
+                    supported,
+                    portPlan?.delivery?.epoch ?? '0',
+                    profilesSupported,
                 ),
             );
         } catch (error) {
@@ -1067,7 +1124,14 @@ export class XrayService implements OnApplicationBootstrap, OnModuleDestroy {
     public async killAllXrayProcesses(): Promise<void> {
         this.watchdog?.disarm();
         try {
-            await coreManagement.run(() => this.xrayProcess.stop());
+            await coreManagement.run(async () => {
+                this.isXrayOnline = false;
+                try {
+                    await this.xrayProcess.stop();
+                } finally {
+                    this.isXrayOnline = false;
+                }
+            });
 
             this.logger.log('s6: Xray process stopped.');
         } catch (error) {

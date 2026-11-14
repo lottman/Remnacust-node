@@ -21,6 +21,7 @@ function fixture(checkpoint='/fixture/checkpoint.pb'){
         mocks[name]={[exportName]:class{}};
     }
     mocks['./port-plan-state']=portStateModule;
+    mocks['./core-management']={coreManagement:{isBusy:()=>false}};
     mocks['./runtime-listener-update']=require('./load-typescript.cjs')(path.join(__dirname,'../src/modules/xray-core/runtime-listener-update.ts'));
     mocks['./live-core.service']={LIVE_CORE_CHECKPOINT:checkpoint};
     mocks['./profile-input']=require('./load-typescript.cjs')(path.join(__dirname,'../src/modules/xray-core/profile-input.ts'));
@@ -31,7 +32,7 @@ function fixture(checkpoint='/fixture/checkpoint.pb'){
         logger:{log(){},warn(){},error(){}},internal:{xtlsApiSocketPath:'/fixture/api.sock'},isXrayOnline:true,isXrayStartedProccesing:false,disableHashedSetCheck:false,xrayPath:'/fixture-core',xrayVersion:'fixture',nodeVersion:'fixture',
         integrations:{sync:async()=>{state.calls.push('integrations');return {}; }},managedCore:{load:async()=>({paused:false})},
         internalService:{isNeedRestartCore:()=>true,hasConfiguration:()=>state.known!==false,hasProfileBindings:()=>!!state.profileInput,getProfileInput:()=>state.profileInput??null,cleanup:()=>{state.calls.push('clear-users');state.known=false;},setXrayConfig:config=>{state.bootConfig=config;},extractUsersFromConfig:async(hashes,config,bindings,input)=>{state.calls.push('users');state.known=true;state.userConfig=config;state.bindings=bindings;state.profileInput=input;}},
-        xtlsSdk:{stats:{getSysStats:async()=>({isOk:state.stats})}},xrayProcess:{getStatus:async()=>({up:state.up,raw:state.raw??(state.up?'true 42':'false -1')})},
+        xtlsSdk:{stats:{getSysStats:async()=>({isOk:state.stats})}},xrayProcess:{getStatus:async()=>({up:state.up,pid:state.up?42:null,raw:state.raw??(state.up?'true 42':'false -1')}),getApiSocketIdentity:()=> 'fixture-socket',probeApi:async()=>state.stats},
         liveCore:{supported:async()=>{state.calls.push('capability');return state.supported;},profilesSupported:async()=>state.graphSupported!==false,
             apply:async()=>{state.calls.push('apply');if(state.applyError)throw state.applyError instanceof Error?state.applyError:Error(state.applyError);},prepareRestart:async()=>state.calls.push('checkpoint'),
             applyProfiles:async(binary,socket,input)=>{state.calls.push('apply-profiles');if(state.applyError)throw Error(state.applyError);state.nativeInput=input;return {unchanged:state.replay??false};},
