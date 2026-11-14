@@ -53,6 +53,7 @@ function fixture() {
         { getStatus: async () => ({ up: state.up }), isApiSocketAvailable: () => state.socket },
         { hasConfiguration: () => false, hasProfileBindings: () => false },
     );
+    service.coreStats = sdk.stats;
     service.logger = {
         warn() {
             state.warnings++;
@@ -111,4 +112,21 @@ test('a ready process with a real SDK failure still reports the original failure
     assert.equal(response.code, 'A010');
     assert.equal(f.state.calls, 1);
     assert.equal(f.state.warnings, 1);
+});
+
+test('reset statistics exclude management before awaiting the process status', async () => {
+    const f = fixture();
+    let resolveStatus;
+    const status = new Promise(resolve => { resolveStatus = resolve; });
+    f.service.xrayProcess.getStatus = () => status;
+    const result = f.service.getUsersStats(true);
+    let release;
+    try {
+        assert.throws(() => { release = management.coreManagement.acquire(); },
+            error => error.getStatus() === 503);
+    } finally {
+        release?.();
+        resolveStatus({ up: true, pid: 42 });
+        await result;
+    }
 });

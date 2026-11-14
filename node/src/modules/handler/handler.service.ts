@@ -18,6 +18,7 @@ import { ERRORS } from '@libs/contracts/constants/errors';
 import { DropConnectionsEvent } from '../_plugin/events/drop-connections';
 import { InternalService } from '../internal/internal.service';
 import { coreManagement } from '../xray-core/core-management';
+import { coreRpcSignal, withCoreRpcDeadline } from '../xray-core/core-rpc-deadline';
 import {
     AddUserRequestDto,
     AddUsersRequestDto,
@@ -73,10 +74,12 @@ export class HandlerService implements OnModuleInit {
     }
 
     public async addUser(data: AddUserRequestDto): Promise<TResult<AddUserResponseModel>> {
-        return coreManagement.run(() => {
-            this.requireConfiguration();
-            return this.addUserLocked(data);
-        });
+        return coreManagement.run(() =>
+            withCoreRpcDeadline(() => {
+                this.requireConfiguration();
+                return this.addUserLocked(data);
+            }),
+        );
     }
 
     private async addUserLocked(data: AddUserRequestDto): Promise<TResult<AddUserResponseModel>> {
@@ -256,10 +259,12 @@ export class HandlerService implements OnModuleInit {
     }
 
     public async removeUser(data: RemoveUserRequestDto): Promise<TResult<RemoveUserResponseModel>> {
-        return coreManagement.run(() => {
-            this.requireConfiguration();
-            return this.removeUserLocked(data);
-        });
+        return coreManagement.run(() =>
+            withCoreRpcDeadline(() => {
+                this.requireConfiguration();
+                return this.removeUserLocked(data);
+            }),
+        );
     }
 
     private async removeUserLocked(
@@ -320,10 +325,12 @@ export class HandlerService implements OnModuleInit {
     }
 
     public async addUsers(data: AddUsersRequestDto): Promise<TResult<AddUserResponseModel>> {
-        return coreManagement.run(() => {
-            this.requireConfiguration();
-            return this.addUsersLocked(data);
-        });
+        return coreManagement.run(() =>
+            withCoreRpcDeadline(() => {
+                this.requireConfiguration();
+                return this.addUsersLocked(data);
+            }),
+        );
     }
 
     private async addUsersLocked(data: AddUsersRequestDto): Promise<TResult<AddUserResponseModel>> {
@@ -340,6 +347,7 @@ export class HandlerService implements OnModuleInit {
             );
 
             for (const user of users) {
+                coreRpcSignal();
                 if (user.userData.userId.includes('~')) {
                     const currentTags = [...this.internalService.getXtlsConfigInbounds()].filter(
                         (tag) =>
@@ -487,10 +495,12 @@ export class HandlerService implements OnModuleInit {
     public async removeUsers(
         data: RemoveUsersRequestDto,
     ): Promise<TResult<RemoveUserResponseModel>> {
-        return coreManagement.run(() => {
-            this.requireConfiguration();
-            return this.removeUsersLocked(data);
-        });
+        return coreManagement.run(() =>
+            withCoreRpcDeadline(() => {
+                this.requireConfiguration();
+                return this.removeUsersLocked(data);
+            }),
+        );
     }
 
     private async removeUsersLocked(
@@ -501,7 +511,10 @@ export class HandlerService implements OnModuleInit {
             const inboundTags = this.internalService.getXtlsConfigInbounds();
 
             if (inboundTags.size === 0) {
-                for (const user of data.users) await this.revokeRetiredUser(user.userId);
+                for (const user of data.users) {
+                    coreRpcSignal();
+                    await this.revokeRetiredUser(user.userId);
+                }
                 return ok(new RemoveUserResponseModel(true, null));
             }
 
@@ -512,6 +525,7 @@ export class HandlerService implements OnModuleInit {
             const removeUsersResponse: Array<ISdkResponse<RemoveUserResponseModelFromSdk>> = [];
 
             for (const user of data.users) {
+                coreRpcSignal();
                 const { userId, hashUuid } = user;
 
                 const userIps =
@@ -567,10 +581,17 @@ export class HandlerService implements OnModuleInit {
     public async dropUsersConnections(
         data: DropUsersConnectionsRequestDto,
     ): Promise<TResult<GenericResponseModel>> {
+        return withCoreRpcDeadline(() => this.dropUsersConnectionsBounded(data));
+    }
+
+    private async dropUsersConnectionsBounded(
+        data: DropUsersConnectionsRequestDto,
+    ): Promise<TResult<GenericResponseModel>> {
         try {
             const { userIds } = data;
 
             for (const userId of userIds) {
+                coreRpcSignal();
                 const userIps = await this.getUserIps(userId);
                 this.eventBus.publish(new DropConnectionsEvent(userIps));
             }
@@ -596,20 +617,25 @@ export class HandlerService implements OnModuleInit {
     }
 
     private async getUserIps(userId: string): Promise<string[] | null> {
+        const signal = coreRpcSignal();
         try {
             if (!this.capNetAdminAvailable) {
                 return null;
             }
 
-            const userIps = await this.xtlsApi.stats.rawClient.getStatsOnlineIpList({
-                name: `user>>>${userId}>>>online`,
-                reset: true,
-            });
+            const userIps = await this.xtlsApi.stats.rawClient.getStatsOnlineIpList(
+                {
+                    name: `user>>>${userId}>>>online`,
+                    reset: true,
+                },
+                { signal },
+            );
 
             const ips = Object.keys(userIps.ips);
 
             return ips;
         } catch (error) {
+            if (signal.aborted) throw error;
             if (error && typeof error === 'object' && 'code' in error && error.code === 5) {
                 return null;
             }
@@ -620,19 +646,22 @@ export class HandlerService implements OnModuleInit {
     }
 
     public async removeOutbound(tag: string): Promise<void> {
-        return coreManagement.run(() => this.removeOutboundLocked(tag));
+        return coreManagement.run(() => withCoreRpcDeadline(() => this.removeOutboundLocked(tag)));
     }
 
     private async removeOutboundLocked(tag: string): Promise<void> {
         try {
-            await this.xtlsApi.handler.rawClient.removeOutbound({
-                tag,
-            });
+            await this.xtlsApi.handler.rawClient.removeOutbound(
+                {
+                    tag,
+                },
+                { signal: coreRpcSignal() },
+            );
 
             return;
         } catch (error) {
             this.logger.error(error);
-            return;
+            throw error;
         }
     }
 }

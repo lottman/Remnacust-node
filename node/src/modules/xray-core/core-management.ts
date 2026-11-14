@@ -12,6 +12,10 @@ export class CoreManagementBarrier {
         return this.active !== null;
     }
 
+    isOwned(): boolean {
+        return this.active !== null && this.context.getStore() === this.active;
+    }
+
     acquire(): () => void {
         if (this.active && this.context.getStore() === this.active) return () => {};
         if (this.active)

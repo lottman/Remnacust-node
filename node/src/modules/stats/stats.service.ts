@@ -13,8 +13,10 @@ import { InternalService } from '../internal/internal.service';
 import { GetInterfaceStatsQuery } from '../network-stats/queries/get-interface-stats/get-interface-stats.query';
 import { readCoreIncarnation } from '../xray-core/core-incarnation';
 import { coreManagement } from '../xray-core/core-management';
+import { withCoreRpcDeadline } from '../xray-core/core-rpc-deadline';
 import { readProfileTraffic } from '../xray-core/profile-traffic';
 import { XrayProcessService } from '../xray-core/xray-process.service';
+import { CoreStatsClient } from './core-stats-client';
 import { IGetUserOnlineStatusRequest } from './interfaces';
 import {
     GetAllInboundsStatsResponseModel,
@@ -31,18 +33,26 @@ import {
 
 @Injectable()
 export class StatsService {
+    private readonly coreStats: CoreStatsClient;
     constructor(
         @InjectXtls() private readonly xtlsSdk: XtlsApi,
         private readonly queryBus: QueryBus,
         private readonly xrayProcess: XrayProcessService,
         private readonly internalService: InternalService,
-    ) {}
+    ) {
+        this.coreStats = new CoreStatsClient(xtlsSdk);
+    }
     private readonly logger = new Logger(StatsService.name);
 
     private async requireCore(): Promise<void> {
+        if (coreManagement.isBusy() && !coreManagement.isOwned())
+            throw new ServiceUnavailableException(
+                'Xray Core is not ready; retry after synchronization',
+            );
+        const status = await this.xrayProcess.getStatus();
         if (
-            coreManagement.isBusy() ||
-            !(await this.xrayProcess.getStatus()).up ||
+            (coreManagement.isBusy() && !coreManagement.isOwned()) ||
+            !status.up ||
             !this.xrayProcess.isApiSocketAvailable()
         )
             throw new ServiceUnavailableException(
@@ -50,12 +60,17 @@ export class StatsService {
             );
     }
 
+    private statsOperation<T>(reset: boolean, action: () => Promise<T>): Promise<T> {
+        const run = () => withCoreRpcDeadline(action);
+        return reset ? coreManagement.run(run) : run();
+    }
+
     public async getUserOnlineStatus(
         body: IGetUserOnlineStatusRequest,
     ): Promise<TResult<GetUserOnlineStatusResponseModel>> {
         await this.requireCore();
         try {
-            const response = await this.xtlsSdk.stats.getUserOnlineStatus(body.username);
+            const response = await this.coreStats.getUserOnlineStatus(body.username);
 
             if (response.isOk && response.data) {
                 return ok(new GetUserOnlineStatusResponseModel(response.data.online));
@@ -74,7 +89,7 @@ export class StatsService {
     public async getSystemStats(): Promise<TResult<GetSystemStatsResponseModel>> {
         await this.requireCore();
         try {
-            const response = await this.xtlsSdk.stats.getSysStats();
+            const response = await this.coreStats.getSysStats();
 
             if (!response.isOk || !response.data) {
                 this.logger.warn(response);
@@ -117,10 +132,16 @@ export class StatsService {
     }
 
     public async getUsersStats(reset: boolean): Promise<TResult<GetUsersStatsResponseModel>> {
+        return this.statsOperation(reset, () => this.getUsersStatsLocked(reset));
+    }
+
+    private async getUsersStatsLocked(
+        reset: boolean,
+    ): Promise<TResult<GetUsersStatsResponseModel>> {
         await this.requireCore();
         try {
             const before = await readCoreIncarnation(await this.xrayProcess.getStatus());
-            const response = await this.xtlsSdk.stats.getAllUsersStats(reset);
+            const response = await this.coreStats.getAllUsersStats(reset);
 
             if (!response.isOk || !response.data) {
                 this.logger.warn(response);
@@ -156,9 +177,16 @@ export class StatsService {
         tag: string,
         reset: boolean,
     ): Promise<TResult<GetInboundStatsResponseModel>> {
+        return this.statsOperation(reset, () => this.getInboundStatsLocked(tag, reset));
+    }
+
+    private async getInboundStatsLocked(
+        tag: string,
+        reset: boolean,
+    ): Promise<TResult<GetInboundStatsResponseModel>> {
         await this.requireCore();
         try {
-            const response = await this.xtlsSdk.stats.getInboundStats(tag, reset);
+            const response = await this.coreStats.getInboundStats(tag, reset);
 
             if (!response.isOk || !response.data || !response.data.inbound) {
                 return fail(ERRORS.FAILED_TO_GET_INBOUND_STATS);
@@ -181,9 +209,16 @@ export class StatsService {
         tag: string,
         reset: boolean,
     ): Promise<TResult<GetOutboundStatsResponseModel>> {
+        return this.statsOperation(reset, () => this.getOutboundStatsLocked(tag, reset));
+    }
+
+    private async getOutboundStatsLocked(
+        tag: string,
+        reset: boolean,
+    ): Promise<TResult<GetOutboundStatsResponseModel>> {
         await this.requireCore();
         try {
-            const response = await this.xtlsSdk.stats.getOutboundStats(tag, reset);
+            const response = await this.coreStats.getOutboundStats(tag, reset);
 
             if (!response.isOk || !response.data || !response.data.outbound) {
                 return fail(ERRORS.FAILED_TO_GET_OUTBOUND_STATS);
@@ -205,9 +240,15 @@ export class StatsService {
     public async getAllInboundsStats(
         reset: boolean,
     ): Promise<TResult<GetAllInboundsStatsResponseModel>> {
+        return this.statsOperation(reset, () => this.getAllInboundsStatsLocked(reset));
+    }
+
+    private async getAllInboundsStatsLocked(
+        reset: boolean,
+    ): Promise<TResult<GetAllInboundsStatsResponseModel>> {
         await this.requireCore();
         try {
-            const response = await this.xtlsSdk.stats.getAllInboundsStats(reset);
+            const response = await this.coreStats.getAllInboundsStats(reset);
 
             if (!response.isOk || !response.data) {
                 return fail(ERRORS.FAILED_TO_GET_INBOUNDS_STATS);
@@ -223,9 +264,15 @@ export class StatsService {
     public async getAllOutboundsStats(
         reset: boolean,
     ): Promise<TResult<GetAllOutboundsStatsResponseModel>> {
+        return this.statsOperation(reset, () => this.getAllOutboundsStatsLocked(reset));
+    }
+
+    private async getAllOutboundsStatsLocked(
+        reset: boolean,
+    ): Promise<TResult<GetAllOutboundsStatsResponseModel>> {
         await this.requireCore();
         try {
-            const response = await this.xtlsSdk.stats.getAllOutboundsStats(reset);
+            const response = await this.coreStats.getAllOutboundsStats(reset);
 
             if (!response.isOk || !response.data) {
                 this.logger.error(response);
@@ -240,12 +287,18 @@ export class StatsService {
     }
 
     public async getCombinedStats(reset: boolean): Promise<TResult<GetCombinedStatsResponseModel>> {
+        return this.statsOperation(reset, () => this.getCombinedStatsLocked(reset));
+    }
+
+    private async getCombinedStatsLocked(
+        reset: boolean,
+    ): Promise<TResult<GetCombinedStatsResponseModel>> {
         await this.requireCore();
         try {
             const { isOk: isOkInbounds, data: inboundsData } =
-                await this.xtlsSdk.stats.getAllInboundsStats(reset);
+                await this.coreStats.getAllInboundsStats(reset);
             const { isOk: isOkOutbounds, data: outboundsData } =
-                await this.xtlsSdk.stats.getAllOutboundsStats(reset);
+                await this.coreStats.getAllOutboundsStats(reset);
 
             if (!isOkInbounds || !inboundsData || !isOkOutbounds || !outboundsData) {
                 return fail(ERRORS.FAILED_TO_GET_COMBINED_STATS);
@@ -284,7 +337,7 @@ export class StatsService {
     public async getUsersIpList(): Promise<TResult<GetUsersIpListResponseModel>> {
         await this.requireCore();
         try {
-            const response = await this.xtlsSdk.stats.getUsersStats(false, false);
+            const response = await this.coreStats.getUsersStats(false, false);
 
             if (!response.isOk || !response.data || !Array.isArray(response.data.users)) {
                 this.logger.error(response);

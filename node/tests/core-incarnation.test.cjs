@@ -58,6 +58,8 @@ function serviceFixture(before,after){
         '../_plugin/queries/get-torrent-blocker-reports-count':{},
         '../network-stats/queries/get-interface-stats/get-interface-stats.query':{},
         '../xray-core/core-management':require('./load-typescript.cjs')(path.join(root,'xray-core/core-management.ts')),
+        '../xray-core/core-rpc-deadline':require('./load-typescript.cjs')(path.join(root,'xray-core/core-rpc-deadline.ts')),
+        './core-stats-client':require('./load-typescript.cjs')(path.join(root,'stats/core-stats-client.ts')),
         '../xray-core/xray-process.service':{},'../xray-core/core-incarnation':{readCoreIncarnation:async()=>reads++===0?before:after},
         '../xray-core/profile-traffic':{readProfileTraffic:async()=>{throw Error('User accounting must not read profile observations');}},
         './models':{GetUsersStatsResponseModel:Model},
@@ -66,6 +68,7 @@ function serviceFixture(before,after){
         requests++;assert.equal(reset,true);
         return {isOk:true,data:{users:[{username:'901',uplink:7,downlink:11},{username:'902',uplink:0,downlink:0}]}};
     }}},{},{getStatus:async()=>({up:true,pid:123}),isApiSocketAvailable:()=>true},{hasProfileBindings:()=>false});
+    service.coreStats=service.xtlsSdk.stats;
     return {service,requests:()=>requests};
 }
 test('the same core incarnation proves a stat sample without changing its traffic',async()=>{

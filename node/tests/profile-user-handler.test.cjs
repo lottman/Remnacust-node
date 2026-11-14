@@ -76,12 +76,13 @@ test('retry after partial addition verifies the exact credential before acceptin
         'an unrelated credential with the same email must not become a successful retry');
 });
 
-test('legacy configurations continue using the existing SDK without binding metadata', async () => {
+test('legacy configurations preserve unscoped user operations without binding metadata', async () => {
     const f = fixture([]);
     assert.equal((await f.handler.addVlessUser(input)).isOk, true);
     assert.equal((await f.handler.removeUser(input.tag, input.username)).isOk, true);
-    assert.deepEqual(f.legacy.map(call => call.method), ['addVlessUser', 'removeUser']);
-    assert.equal(f.calls.length, 0);
+    assert.equal(f.legacy.length, 0);
+    assert.equal(f.calls.length, 2);
+    assert(f.calls.every(call => call.binding === undefined));
 });
 
 test('malformed binding indexes cannot fall back to an unscoped mutation', async () => {
@@ -99,4 +100,43 @@ test('explicit retired-user removal addresses the node owner without a live bind
     assert.equal(f.calls[0].retired,'1');
     assert.equal(f.calls[0].request.tag,'');
     assert.equal(f.legacy.length,0);
+});
+
+test('legacy user mutations use the cancellable raw channel with no profile metadata', async () => {
+    const f = fixture([]);
+    assert.equal((await f.handler.addVlessUser(input)).isOk, true);
+    assert.equal((await f.handler.removeUser(input.tag, input.username)).isOk, true);
+    assert.equal(f.calls.length, 2);
+    assert(f.calls.every(call => call.signal instanceof AbortSignal));
+    assert(f.calls.every(call => call.binding === undefined));
+    assert.equal(f.legacy.length, 0);
+});
+
+test('legacy account encodings match the pinned SDK for every existing user protocol', async () => {
+    const { HandlerService } = require('@remnawave/xtls-sdk/build/src/handler/handler.service');
+    const requests = [];
+    const sdk = Object.assign(Object.create(HandlerService.prototype), {
+        client: { alterInbound: async request => { requests.push(request); } },
+    });
+    const variants = [
+        ['addVlessUser', input],
+        ['addTrojanUser', { ...input, password: 'fixture-password' }],
+        ['addShadowsocksUser', { ...input, password: 'fixture-password', cipherType: 5, ivCheck: false }],
+        ['addShadowsocks2022User', { ...input, key: 'fixture-key' }],
+        ['addHysteriaUser', input],
+    ];
+    for (const [method, data] of variants) {
+        const f = fixture([]);
+        assert.equal((await sdk[method](data)).isOk, true);
+        assert.equal((await f.handler[method](data)).isOk, true);
+        assert.deepEqual(f.calls[0].request, requests.at(-1), method);
+    }
+    const { addMasqueUser } = load(path.join(__dirname, '../src/modules/handler/masque-user.ts'), {
+        'nice-grpc': { createClient: () => ({ alterInbound: async request => { requests.push(request); } }) },
+    });
+    const f = fixture([]);
+    const data = { ...input, password: 'fixture-password' };
+    assert.equal((await addMasqueUser({ channel: {} }, data)).isOk, true);
+    assert.equal((await f.handler.addMasqueUser(data)).isOk, true);
+    assert.deepEqual(f.calls[0].request.operation.value, requests.at(-1).operation.value);
 });

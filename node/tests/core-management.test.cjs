@@ -40,6 +40,7 @@ test('device removal cannot be acknowledged during checkpoint replacement, and r
         '@libs/contracts/constants/errors':{ERRORS:{INTERNAL_SERVER_ERROR:{code:'error'}}},
         '../_plugin/events/drop-connections':{DropConnectionsEvent:class{}},
         '../xray-core/core-management':management,'./masque-user':{},'./models':models,
+        '../xray-core/core-rpc-deadline':require('./load-typescript.cjs')(path.join(sourceRoot,'modules/xray-core/core-rpc-deadline.ts')),
         './profile-user-handler':{ProfileUserHandler:class{constructor(api){this.removeUser=(...args)=>api.handler.removeUser(...args);}}},
     });
     const calls=[];

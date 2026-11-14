@@ -19,6 +19,7 @@ function service(stats) {
         './models': { GetUsersIpListResponseModel: Users, GetUserIpListResponseModel: Ips },
     });
     const instance = new StatsService({ stats }, {}, { getStatus: async () => ({ up: true }), isApiSocketAvailable: () => true }, {});
+    instance.coreStats = stats;
     instance.logger = { error() {}, warn() {} };
     return instance;
 }
