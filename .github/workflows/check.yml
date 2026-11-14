@@ -25,16 +25,27 @@ jobs:
           chmod 755 "$REMNACUST_LISTENER_TEST_CORE"
           node --test tests/runtime-listener-process.test.cjs
       - run: npm run build
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.4'
+          cache-dependency-path: node/docker/remnacust-core.tar.gz.sha256
 
-      - name: Verify migration cold start with the published native runtime
-        timeout-minutes: 7
+      - name: Verify migration cold start with the current verified core source
+        timeout-minutes: 15
         working-directory: .
         run: |
           base=ghcr.io/lottman/remnacust-node@sha256:e0ed87fe95f8ed5b7ef08bec69881ca761d885f686a1af3d241c11eaf5f6b649
           docker pull "$base"
           context=$(mktemp -d "$RUNNER_TEMP/remnacust-node-runtime.XXXXXXXX")
-          trap 'rm -f "$context/main.js" "$context/Dockerfile"; rmdir "$context"' EXIT
+          trap 'test "${context#"$RUNNER_TEMP/"}" != "$context" && rm -rf -- "$context"' EXIT
           cp node/dist/main.js "$context/main.js"
-          printf 'FROM %s\nCOPY main.js /opt/app/dist/main.js\n' "$base" > "$context/Dockerfile"
+          (cd node/docker && sha256sum -c remnacust-core.tar.gz.sha256)
+          mkdir "$context/core"
+          tar -xzf node/docker/remnacust-core.tar.gz -C "$context/core"
+          (cd "$context/core" && sha256sum -c core-source.sha256 > /dev/null)
+          version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$context/core/core-source-lock.json")
+          (cd "$context/core/Xray-core-main" && CGO_ENABLED=0 go build -buildvcs=false -trimpath -ldflags "-s -w -X github.com/xtls/xray-core/core.build=Remnacust-$version" -o "$context/xray" ./main)
+          printf '*\n!main.js\n!xray\n!Dockerfile\n' > "$context/.dockerignore"
+          printf 'FROM %s\nCOPY main.js /opt/app/dist/main.js\nCOPY --chmod=755 xray /usr/local/bin/xray\n' "$base" > "$context/Dockerfile"
           docker build --tag remnacust-node:source-check "$context"
           bash scripts/test-node-startup.sh remnacust-node:source-check
