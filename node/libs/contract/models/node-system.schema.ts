@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { NetworkAddressesSchema } from './network-addresses.schema';
+
 export const NetworkInterfaceSchema = z.object({
     interface: z.string(),
     rxBytesPerSec: z.number(),
@@ -19,6 +21,7 @@ export const NodeSystemInfoSchema = z.object({
     type: z.string(),
     version: z.string(),
     networkInterfaces: z.array(z.string()),
+    ipAddresses: NetworkAddressesSchema.optional(),
 });
 
 export const NodeSystemStatsSchema = z.object({

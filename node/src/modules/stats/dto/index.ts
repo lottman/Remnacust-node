@@ -3,6 +3,7 @@ export * from './get-all-outbounds.dto';
 export * from './get-combined-stats.dto';
 export * from './get-geocheck.dto';
 export * from './get-inbound-stats.dto';
+export * from './get-network-addresses.dto';
 export * from './get-outbound-stats.dto';
 export * from './get-system-stats.dto';
 export * from './get-user-online-status.dto';

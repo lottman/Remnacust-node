@@ -8,9 +8,9 @@ The Remnacust agent receives panel configuration, manages Xray and reports stati
 
 | Component | Version |
 | --- | --- |
-| Installer | [1.2.174](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.174) |
-| Panel and subscription page | [1.1.7.126](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.126) |
-| Node | [1.1.37](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.37), based on Remnawave Node 3.4.3 |
+| Installer | [1.2.175](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.175) |
+| Panel and subscription page | [1.1.7.127](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.127) |
+| Node | [1.1.38](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.38), based on Remnawave Node 3.4.3 |
 | Core | [1.1.22](https://github.com/lottman/Remnacust-core/releases/tag/v1.1.22), Xray v26.11.9 |
 
 The agent and core have independent versions. Updating the panel does not update remote nodes. The current branch may contain unreleased changes.
@@ -88,6 +88,12 @@ A running Core can serve traffic without the panel within existing rights and pe
 A day of offline operation requires enough validity time and local credit for expected traffic and recovery. Restart also requires compatible versions and persisted configuration, credentials and journals. This is not an unconditional 24-hour guarantee for every older installation. [Offline operation requirements](https://github.com/lottman/Remnacust-panel/blob/main/docs/NODE-AUTONOMY.md).
 
 Ordinary Remnawave Node/Xray support standard configurations within their capabilities; they do not automatically gain Remnacust quota, device or recovery extensions. Do not bypass policy checks to install an older core. Xera HTTP (`network: "xera-http"`) requires compatible clients and servers; standard XHTTP is a separate transport. [Compatibility](docs/NODE-COMPATIBILITY.md) · [Limit scopes](https://github.com/lottman/Remnacust-panel/blob/main/docs/HOST-LIMITS.md).
+
+## Node 1.1.38 / Core 1.1.22
+
+The node reports its assigned IPv4 and IPv6 addresses. Panel 1.1.7.127 adds newly discovered addresses every 30 minutes; a manual rescan also removes disappeared automatically discovered addresses. Manual addresses and disabled connections are preserved. Rescanning uses the authenticated API and remains available while Xray is stopped.
+
+[Node 1.1.38 changes](docs/releases/1.1.38.md).
 
 ## Node 1.1.37 / Core 1.1.22
 

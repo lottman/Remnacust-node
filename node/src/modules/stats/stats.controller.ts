@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Post, UseFilters, UseGuards } from '@nestjs/common';
 
-import { JwtDefaultGuard } from '@common/guards/jwt-guards';
 import { HttpExceptionFilter } from '@common/exception';
+import { JwtDefaultGuard } from '@common/guards/jwt-guards';
 import { errorHandler } from '@common/helpers';
 import { STATS_CONTROLLER, STATS_ROUTES } from '@libs/contracts/api/controllers/stats';
 
@@ -16,6 +16,7 @@ import {
     GetGeocheckResponseDto,
     GetInboundStatsRequestDto,
     GetInboundStatsResponseDto,
+    GetNetworkAddressesResponseDto,
     GetOutboundStatsRequestDto,
     GetOutboundStatsResponseDto,
     GetSystemStatsResponseDto,
@@ -60,6 +61,16 @@ export class StatsController {
     @Post(STATS_ROUTES.GET_GEOCHECK)
     public async getGeocheck(@Body() body: GetGeocheckRequestDto): Promise<GetGeocheckResponseDto> {
         const response = await this.geocheckService.getGeocheck(body);
+        const data = errorHandler(response);
+
+        return {
+            response: data,
+        };
+    }
+
+    @Get(STATS_ROUTES.GET_NETWORK_ADDRESSES)
+    public async getNetworkAddresses(): Promise<GetNetworkAddressesResponseDto> {
+        const response = await this.statsService.getNetworkAddresses();
         const data = errorHandler(response);
 
         return {

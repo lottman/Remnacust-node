@@ -24,15 +24,22 @@ export class GetSystemStatsResponseModel {
     public plugins: IPluginStats;
     public system: {
         stats: TNodeSystemStats;
+        info?: { ipAddresses: string[] };
     };
 
-    constructor(xrayInfo: IXrayStats | null, plugins: IPluginStats, systemStats: TNodeSystemStats,
+    constructor(
+        xrayInfo: IXrayStats | null,
+        plugins: IPluginStats,
+        systemStats: TNodeSystemStats,
         public readonly userStateSynchronized = false,
-        public readonly bindingTraffic: ProfileTrafficSnapshot | null = null) {
+        public readonly bindingTraffic: ProfileTrafficSnapshot | null = null,
+        ipAddresses?: string[],
+    ) {
         this.xrayInfo = xrayInfo;
         this.plugins = plugins;
         this.system = {
             stats: systemStats,
+            ...(ipAddresses === undefined ? {} : { info: { ipAddresses } }),
         };
     }
 }

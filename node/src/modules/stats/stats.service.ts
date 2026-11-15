@@ -5,7 +5,8 @@ import { XtlsApi } from '@remnawave/xtls-sdk';
 import { InjectXtls } from '@remnawave/xtls-sdk-nestjs';
 
 import { fail, ok, TResult } from '@common/types';
-import { getSystemStats } from '@common/utils/get-system-stats';
+import { getNetworkAddresses, getSystemStats } from '@common/utils/get-system-stats';
+import type { GetNetworkAddressesCommand } from '@libs/contracts/commands';
 import { ERRORS } from '@libs/contracts/constants';
 
 import { GetTorrentBlockerReportsCountQuery } from '../_plugin/queries/get-torrent-blocker-reports-count';
@@ -86,6 +87,16 @@ export class StatsService {
         }
     }
 
+    public async getNetworkAddresses(): Promise<
+        TResult<GetNetworkAddressesCommand.Response['response']>
+    > {
+        try {
+            return ok(getNetworkAddresses());
+        } catch {
+            return fail(ERRORS.FAILED_TO_GET_NETWORK_ADDRESSES);
+        }
+    }
+
     public async getSystemStats(): Promise<TResult<GetSystemStatsResponseModel>> {
         await this.requireCore();
         try {
@@ -104,6 +115,12 @@ export class StatsService {
             const bindingTraffic = this.internalService.hasProfileBindings()
                 ? await readProfileTraffic(this.xtlsSdk).catch(() => null)
                 : null;
+            let ipAddresses: string[] | undefined;
+            try {
+                ipAddresses = getNetworkAddresses().addresses;
+            } catch {
+                ipAddresses = undefined;
+            }
 
             return {
                 isOk: true,
@@ -120,6 +137,7 @@ export class StatsService {
                     },
                     this.internalService.hasConfiguration(),
                     bindingTraffic,
+                    ipAddresses,
                 ),
             };
         } catch (error) {

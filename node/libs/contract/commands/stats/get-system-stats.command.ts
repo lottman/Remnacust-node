@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { NodeSystemStatsSchema, ProfileTrafficSchema } from '../../models';
+import { NetworkAddressesSchema, NodeSystemStatsSchema, ProfileTrafficSchema } from '../../models';
 import { REST_API } from '../../api';
 export namespace GetSystemStatsCommand {
     export const url = REST_API.STATS.GET_SYSTEM_STATS;
@@ -30,6 +30,7 @@ export namespace GetSystemStatsCommand {
             }),
             system: z.object({
                 stats: NodeSystemStatsSchema,
+                info: z.object({ ipAddresses: NetworkAddressesSchema }).optional(),
             }),
         }),
     });
