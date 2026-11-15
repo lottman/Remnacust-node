@@ -8,10 +8,10 @@ The Remnacust agent receives panel configuration, manages Xray and reports stati
 
 | Component | Version |
 | --- | --- |
-| Installer | [1.2.173](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.173) |
-| Panel and subscription page | [1.1.7.125](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.125) |
-| Node | [1.1.36](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.36), based on Remnawave Node 3.4.3 |
-| Core | [1.1.21](https://github.com/lottman/Remnacust-core/releases/tag/v1.1.21), Xray v26.11.9 |
+| Installer | [1.2.174](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.174) |
+| Panel and subscription page | [1.1.7.126](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.126) |
+| Node | [1.1.37](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.37), based on Remnawave Node 3.4.3 |
+| Core | [1.1.22](https://github.com/lottman/Remnacust-core/releases/tag/v1.1.22), Xray v26.11.9 |
 
 The agent and core have independent versions. Updating the panel does not update remote nodes. The current branch may contain unreleased changes.
 
@@ -88,6 +88,16 @@ A running Core can serve traffic without the panel within existing rights and pe
 A day of offline operation requires enough validity time and local credit for expected traffic and recovery. Restart also requires compatible versions and persisted configuration, credentials and journals. This is not an unconditional 24-hour guarantee for every older installation. [Offline operation requirements](https://github.com/lottman/Remnacust-panel/blob/main/docs/NODE-AUTONOMY.md).
 
 Ordinary Remnawave Node/Xray support standard configurations within their capabilities; they do not automatically gain Remnacust quota, device or recovery extensions. Do not bypass policy checks to install an older core. Xera HTTP (`network: "xera-http"`) requires compatible clients and servers; standard XHTTP is a separate transport. [Compatibility](docs/NODE-COMPATIBILITY.md) · [Limit scopes](https://github.com/lottman/Remnacust-panel/blob/main/docs/HOST-LIMITS.md).
+
+## Node 1.1.37 / Core 1.1.22
+
+Management calls to Core use a 15-second deadline and RPC cancellation. Configuration changes, user mutations and statistics reads that reset counters cannot overlap. A busy Core returns temporary unavailability; retry after synchronization. Core 1.1.22 also honors cancellation of legacy gRPC user and statistics operations after waiting. Cancellation or timeout does not roll back changes Core has already applied: check the actual state before retrying. The management request format is preserved.
+
+Adaptive Xera HTTP offers Balanced (balanced), Low latency (low-latency) and Unstable network (unstable-network). They adjust concurrency using measured HTTP responses, data transfer and request waiting. When adaptive is present, all three fields are required: mode, minStreams and maxStreams. Integer bounds range from 1 to 32, with the minimum no greater than the maximum; the panel form offers 4/32. Limits count simultaneously active HTTP requests separately for each direction, destination and generation of transport settings. They do not count TCP connections or users, or distribute CPU load.
+
+Without adaptive, previous behavior, manual JSON and extra remain available. Adjustment admits new requests without aborting or replaying existing ones; auto/stream-auto transfer modes, ALPN, padding and quotas are preserved. Adaptation requires Core 1.1.22 or later in a client supporting Xera HTTP. The existing Xera wire format is retained. Profiles use measured feedback without AI training and do not guarantee DPI invisibility or an advantage in any particular country.
+
+[Node 1.1.37 changes](docs/releases/1.1.37.md) · [Xera guide](https://github.com/lottman/Remnacust-core/blob/main/docs/XERA-HTTP.md).
 
 ## Node 1.1.36 / Core 1.1.21
 
