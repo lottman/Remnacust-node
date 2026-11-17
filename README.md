@@ -8,9 +8,9 @@
 
 | Компонент | Версия |
 | --- | --- |
-| Installer | [1.2.175](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.175) |
-| Панель и страница подписки | [1.1.7.127](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.127) |
-| Node | [1.1.38](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.38), основа Remnawave Node 3.4.3 |
+| Installer | [1.2.178](https://github.com/lottman/Remnacust-installer/releases/tag/v1.2.178) |
+| Панель и страница подписки | [1.1.7.135](https://github.com/lottman/Remnacust-panel/releases/tag/v1.1.7.135) |
+| Node | [1.1.39](https://github.com/lottman/Remnacust-node/releases/tag/v1.1.39), основа Remnawave Node 3.4.6 |
 | Core | [1.1.22](https://github.com/lottman/Remnacust-core/releases/tag/v1.1.22), Xray v26.11.9 |
 
 Версии агента и ядра независимы. Обновление панели не обновляет удалённую ноду. Текущая ветка может содержать ещё не выпущенные изменения.
@@ -89,11 +89,11 @@ Health API может отвечать, пока Core ещё ожидает пе
 
 Обычные Remnawave Node/Xray совместимы со стандартными конфигурациями в пределах своих возможностей; они не получают автоматически расширения Remnacust для квот, устройств и восстановления. Не обходите проверки политик для установки старого ядра. Xera HTTP (`network: "xera-http"`) требует совместимых клиента и сервера; стандартный XHTTP — отдельный транспорт. [Совместимость](docs/NODE-COMPATIBILITY.md) · [Области лимитов](https://github.com/lottman/Remnacust-panel/blob/main/docs/HOST-LIMITS.md).
 
-## Node 1.1.38 / Core 1.1.22
+## Node 1.1.39 / Core 1.1.22
 
-Нода сообщает панели назначенные IPv4 и IPv6. Panel 1.1.7.127 добавляет новые адреса каждые 30 минут; ручной перескан также убирает исчезнувшие автоматически найденные адреса. Ручные адреса и выключенные подключения сохраняются. Перескан доступен через защищённый API, даже если Xray остановлен.
+Нода сообщает панели назначенные IPv4 и IPv6. Panel 1.1.7.135 добавляет новые адреса каждые 30 минут; ручной перескан также убирает исчезнувшие автоматически найденные адреса. Ручные адреса и выключенные подключения сохраняются. Перескан доступен через защищённый API, даже если Xray остановлен.
 
-[Изменения Node 1.1.38](docs/releases/1.1.38.md).
+[Изменения Node 1.1.39](docs/releases/1.1.39.md).
 
 ## Node 1.1.37 / Core 1.1.22
 
